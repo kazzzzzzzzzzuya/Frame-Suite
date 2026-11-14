@@ -46,22 +46,19 @@ jobs:
       - name: Decide
         id: decide
         run: |
-          first=false
-          [ -z "$(gh release list --limit 1 --json tagName --jq '.[0].tagName')" ] && first=true
-          if [ "${{ steps.check.outputs.changed }}" = "true" ] || [ "${{ inputs.release }}" = "true" ] || [ "$first" = "true" ]; then
+          if [ "${{ steps.check.outputs.changed }}" = "true" ] || [ "${{ inputs.release }}" = "true" ]; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
             echo "Nothing new upstream." >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "first=$first" >> "$GITHUB_OUTPUT"
 
       - name: Version
         if: steps.decide.outputs.go == 'true'
         id: version
         run: |
           current=$(node -p "require('./package.json').version")
-          if [ "${{ steps.decide.outputs.first }}" = "true" ] || ! git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
+          if ! git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
             next=$current        # this version has not been released yet
           else
             next=$(npm version patch --no-git-tag-version | tr -d v)

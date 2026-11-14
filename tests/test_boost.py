@@ -25,6 +25,15 @@ class Base(unittest.TestCase):
     def go(self, coro):
         return support.run(coro)
 
+    def setup_step(self, step):
+        self.go(self.suite.setup_run(step))
+        self.go(self.suite.wizard_task)
+        self.assertEqual(self.suite.wizard["phase"], "done", self.suite.wizard)
+
+    def lsfg_profile(self, appid, name, config):
+        res = self.go(self.suite.ad.lsfg_set(appid, name, config))
+        self.assertTrue(res["ok"], res)
+
     def lsfg_ready(self):
         async def state():
             return {"available": True, "installed": True, "lossless": True, "lossless_status": ""}
@@ -81,9 +90,7 @@ class Lsfg(Base):
 
     def setUp(self):
         super().setUp()
-        self.go(self.suite.setup_run("lsfg"))
-        self.go(self.suite.wizard_task)
-        self.assertEqual(self.suite.wizard["phase"], "done", self.suite.wizard)
+        self.setup_step("lsfg")
         self.assertTrue(self.go(self.suite.setup())["lsfg"]["installed"])
         self.lsfg_ready()
         self.conf = os.path.join(self.env.home, ".config", "lsfg-vk", "conf.toml")
@@ -116,7 +123,7 @@ class Lsfg(Base):
         self.assertEqual(bridge.read(self.env.home)["games"]["2000"]["frame_generation"]["multiplier"], 3)
 
     def test_a_profile_the_user_made_is_kept_and_survives_off(self):
-        self.go(self.suite.ad.lsfg_set("2000", "Old Game", {"multiplier": 4, "flow_scale": 0.3}))
+        self.lsfg_profile("2000", "Old Game", {"multiplier": 4, "flow_scale": 0.3})
         res = self.go(self.suite.boost_on("2000", "Old Game", "", False))
         self.assertEqual(res["view"]["boost"]["applied"], {"lsfg": "kept"})
         self.assertIn("multiplier = 4", open(self.conf).read())
@@ -153,9 +160,7 @@ class OptiScaler(Base):
                 self.fail("7z is needed to unpack OptiScaler")
             self.skipTest("no 7z on this machine")
         self.suite.detected = "z1-extreme"
-        self.go(self.suite.setup_run("optiscaler"))
-        self.go(self.suite.wizard_task)
-        self.assertEqual(self.suite.wizard["phase"], "done", self.suite.wizard)
+        self.setup_step("optiscaler")
         self.before = support.tree(self.dx12)
 
     def test_setup_installs_the_bundle_with_the_chips_runtime(self):
@@ -220,9 +225,10 @@ class OptiScaler(Base):
         self.assertTrue(self.go(self.suite.game("1000"))["optiscaler"]["patched"])  # still theirs
 
     def test_two_frame_generators_are_pointed_out_and_fixed(self):
+        self.setup_step("lsfg")
         res = self.go(self.suite.boost_on("1000", "Shiny Game", "", False))
         lo = res["launch_options"]
-        self.go(self.suite.ad.lsfg_set("1000", "Shiny Game", {"multiplier": 2}))
+        self.lsfg_profile("1000", "Shiny Game", {"multiplier": 2})
         c = [c for c in self.go(self.suite.game("1000", lo))["conflicts"] if c["id"] == "double-fg"][0]
         self.assertEqual(c["level"], "warn")
         self.go(self.suite.set_option("1000", "fg_in_game", True, lo))
@@ -254,8 +260,9 @@ class OptiScaler(Base):
         self.assertFalse(self.go(self.suite.set_menu_key("1000", "rm -rf"))["ok"])
 
     def test_remove_everything(self):
+        self.setup_step("lsfg")
         res = self.go(self.suite.boost_on("1000", "Shiny Game", SMOOTH, False))
-        self.go(self.suite.ad.lsfg_set("1000", "Shiny Game", {"multiplier": 2}))
+        self.lsfg_profile("1000", "Shiny Game", {"multiplier": 2})
         res = self.go(self.suite.remove_all("1000", res["launch_options"]))
         self.assertTrue(res["ok"], res)
         self.assertEqual(res["launch_options"], SMOOTH)
