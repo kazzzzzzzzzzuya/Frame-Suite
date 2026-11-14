@@ -1,0 +1,13 @@
+{
+  "id": "generic",
+  "label": "Any device (upstream defaults)",
+  "match": {},
+  "source": "The defaults the three plugins ship with. Nothing here is tuned for a particular chip.",
+  "optiscaler": { "fsr4_variant": null, "proxy_dll": "dxgi.dll", "helix": true },
+  "default_preset": "balanced",
+  "presets": {
+    "quality": { "label": "Quality", "lsfg": { "multiplier": 2, "flow_scale": 1.0, "performance_mode": false } },
+    "balanced": { "label": "Balanced", "lsfg": { "multiplier": 2, "flow_scale": 0.8, "performance_mode": true } },
+    "battery": { "label": "Battery", "lsfg": { "multiplier": 2, "flow_scale": 0.5, "performance_mode": true } }
+  }
+}

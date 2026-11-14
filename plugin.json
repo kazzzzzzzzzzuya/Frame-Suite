@@ -1,0 +1,11 @@
+{
+  "name": "Frame Suite",
+  "author": "kazzzzzzzzzzuya",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["framegen", "upscaling", "lsfg", "optiscaler", "fsr", "helixsr"],
+    "description": "decky-lsfg-vk, Decky-Framegen and HelixSR Manager in one plugin, with a per-game switch that sets them up for your device's chip.",
+    "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"
+  }
+}

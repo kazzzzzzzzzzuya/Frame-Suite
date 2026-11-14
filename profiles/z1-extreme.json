@@ -1,0 +1,13 @@
+{
+  "id": "z1-extreme",
+  "label": "Ryzen Z1 Extreme (Radeon 780M, RDNA 3)",
+  "match": { "cpu": "Z1 Extreme" },
+  "source": "FSR 4.1.1 through the driver override, as reported working by the owner of a Legion Go on SteamOS. lsfg-vk values are starting points, not measured: use Measure on a game to compare.",
+  "optiscaler": { "fsr4_variant": "rdna34-official-411", "proxy_dll": "dxgi.dll", "helix": true },
+  "default_preset": "balanced",
+  "presets": {
+    "quality": { "label": "Quality", "lsfg": { "multiplier": 2, "flow_scale": 1.0, "performance_mode": false } },
+    "balanced": { "label": "Balanced", "lsfg": { "multiplier": 2, "flow_scale": 0.8, "performance_mode": true } },
+    "battery": { "label": "Battery", "lsfg": { "multiplier": 2, "flow_scale": 0.5, "performance_mode": true } }
+  }
+}

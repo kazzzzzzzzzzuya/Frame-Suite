@@ -1,0 +1,24 @@
+{
+  "suite_repo": "kazzzzzzzzzzuya/temp",
+  "upstreams": {
+    "lsfg": {
+      "title": "Decky LSFG-VK",
+      "repo": "xXJSONDeruloXx/decky-lsfg-vk",
+      "tag": "v0.14.4",
+      "commit": "e744826869cdf8711373a9a655e423fd8e79e654",
+      "prebuild": ["bash", "scripts/build_i18n_json.sh"]
+    },
+    "optiscaler": {
+      "title": "Decky Framegen",
+      "repo": "xXJSONDeruloXx/Decky-Framegen",
+      "tag": "v0.17",
+      "commit": "96eb17b0a9f2cfd2b00ad082bef893f4efc229f7"
+    },
+    "helix": {
+      "title": "HelixSR Manager",
+      "repo": "PeroTuncay/DeckyHelixSRManager",
+      "tag": "v0.11.3",
+      "commit": "949949f91220d4d0685237e3596eb43167a0bce4"
+    }
+  }
+}

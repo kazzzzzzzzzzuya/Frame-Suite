@@ -1,0 +1,29 @@
+name: Set up the build tools
+description: Node, pnpm, the Pythons and command-line tools the build and the upstream test suites need
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+    # 3.11 is what the build compiles against (Decky's Python is older than the newest);
+    # 3.12 runs the tests (decky-lsfg-vk's suite asks for it by name).
+    - uses: actions/setup-python@v5
+      with:
+        python-version: |
+          3.11
+          3.12
+    - name: Tools
+      shell: bash
+      run: |
+        for tool in jq zip 7z curl; do
+          command -v "$tool" >/dev/null || missing="$missing $tool"
+        done
+        if [ -n "$missing" ]; then
+          sudo apt-get update -q
+          sudo apt-get install -y -q jq zip p7zip-full curl
+        fi
+        npm ci --no-audit --no-fund

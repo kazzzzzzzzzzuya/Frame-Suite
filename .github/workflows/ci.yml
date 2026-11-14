@@ -1,0 +1,36 @@
+name: CI
+
+# Builds the plugin from the pinned upstream releases and runs every test:
+# the three plugins' own suites and Frame Suite's, the latter against the real
+# upstream backends (OptiScaler bundle and lsfg-vk included).
+on:
+  push:
+    branches-ignore: ["release/**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Build and test
+        env:
+          FRAME_SUITE_REQUIRE_INTEGRATION: "1"
+        run: |
+          node scripts/upstreams.mjs fetch
+          node scripts/build.mjs --test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frame-suite
+          path: out/frame-suite.zip
+          retention-days: 14

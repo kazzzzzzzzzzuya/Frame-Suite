@@ -1,0 +1,74 @@
+import { callable } from "@decky/api";
+
+export interface SubInfo { id: string; title: string; version: string; repo: string; ok: boolean; error: string | null }
+export interface ProfileInfo {
+  id: string; label: string; source: string; default_preset: string;
+  presets: { id: string; label: string }[];
+}
+export interface Info {
+  version: string; repo: string; built: string | null;
+  chip: { cpu: string; vendor: string; product: string; family: string };
+  detected: string; profile: string; profile_chosen: string | null;
+  profiles: ProfileInfo[]; subs: SubInfo[];
+  variants: { default: string | null; variants: { id: string; label: string }[] };
+  menu_keys: { code: string; label: string }[];
+  bridge: string;
+}
+export interface Conflict { id: string; level: "warn" | "error"; text: string; fix?: string; fix_label?: string }
+export interface Measurement { fps: number; low: number | null; spread: number; label: string; time: number; seconds: number }
+export interface GameOptions {
+  preset: string; route: "auto" | "optiscaler" | "lsfg"; variant: string | null; helix: boolean;
+  fg_in_game: boolean; multiplier: number | null;
+}
+export interface GameView {
+  appid: string; name: string; steam: boolean; busy: boolean; running: boolean; acked: boolean;
+  boost: { on: boolean; route: string | null; time: number | null; applied: Record<string, unknown> };
+  options: GameOptions;
+  plan: { route: "optiscaler" | "lsfg"; reason: string; blockers: { id: string; text: string }[] };
+  optiscaler: { available: boolean; found: boolean; patched: boolean; variant?: string | null; variant_label?: string | null };
+  helix: { available: boolean; ok: boolean; built: boolean; active: string | null; inputs: string[] };
+  lsfg: { available: boolean; installed: boolean; lossless: boolean; config: Record<string, unknown> | null; base_cap: number };
+  anticheat: string[];
+  menu_key: string | null;
+  conflicts: Conflict[];
+  summary: { active: string[]; live: string };
+  measure: Measurement[];
+}
+export interface Change {
+  ok: boolean; error?: string; blocker?: string; need_ack?: boolean; anticheat?: string[];
+  launch_options?: string; launch_changed?: boolean; done?: string[]; warnings?: string[]; view?: GameView;
+}
+export interface SetupState {
+  lsfg: { available: boolean; installed: boolean; lossless: boolean };
+  optiscaler: { available: boolean; installed: boolean };
+  helix: {
+    available: boolean; downloaded: boolean; built: boolean; active?: string | null; setup_state?: string | null;
+    download?: { active?: boolean; bytes?: number; total?: number; phase?: string };
+  };
+  wizard: { step: string | null; phase: string; error: string | null; tag: string | null };
+  variant: string | null;
+}
+export interface Release { version: string; url: string; sha256: string; published: string | null; notes: string }
+export interface Updates { ok: boolean; error?: string; current: string; latest?: string; newer?: boolean; releases: Release[] }
+export interface MeasureStatus {
+  state: "idle" | "running" | "done" | "failed"; appid?: string; progress?: number; note?: string; error?: string;
+  result?: Measurement;
+}
+
+export const getInfo = callable<[], Info>("suite_info");
+export const setProfile = callable<[id: string | null], Info>("suite_set_profile");
+export const getGames = callable<[], { appid: string; name: string; boost?: boolean }[]>("suite_games");
+export const getGame = callable<[appid: string, launch: string, name: string | null], GameView>("suite_game");
+export const setOption = callable<[appid: string, key: string, value: unknown, launch: string],
+  { ok: boolean; error?: string; warnings?: string[]; view?: GameView }>("suite_set_option");
+export const boostOn = callable<[appid: string, name: string, launch: string, ack: boolean], Change>("suite_boost_on");
+export const boostOff = callable<[appid: string, launch: string], Change>("suite_boost_off");
+export const removeAll = callable<[appid: string, launch: string], Change>("suite_remove_all");
+export const applyFix = callable<[appid: string, fix: string, launch: string], Change>("suite_fix");
+export const setMenuKey = callable<[appid: string, code: string], { ok: boolean; error?: string }>("suite_set_menu_key");
+export const getSetup = callable<[], SetupState>("suite_setup");
+export const runSetup = callable<[step: string], { ok: boolean; error?: string }>("suite_setup_run");
+export const measureStart = callable<[appid: string, seconds: number], { ok: boolean; error?: string }>("suite_measure_start");
+export const measureStatus = callable<[], MeasureStatus>("suite_measure_status");
+export const measureClear = callable<[appid: string], { ok: boolean }>("suite_measure_clear");
+export const getUpdates = callable<[force: boolean], Updates>("suite_updates");
