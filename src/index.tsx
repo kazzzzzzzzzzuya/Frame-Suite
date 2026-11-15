@@ -35,8 +35,31 @@ function Title({ names }: { names: Record<string, string> }) {
   );
 }
 
+/** B on any inner page goes back to Frame Suite's own first page instead of closing the menu.
+ *  An upstream panel's own inner pages (lsfg-vk's game details) still take B first. The wrapper
+ *  is always there, so the page below keeps its state; on the first page B closes the menu as usual. */
 function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   const page = usePage();
+  const inner = page !== "home";
+  return (
+    <Focusable
+      noFocusRing
+      onCancelButton={
+        inner
+          ? (evt: { stopPropagation?: () => void }) => {
+              evt?.stopPropagation?.();
+              nav.go("home");
+            }
+          : undefined
+      }
+      onCancelActionDescription={inner ? "Back" : undefined}
+    >
+      <PageContent page={page} upstream={upstream} />
+    </Focusable>
+  );
+}
+
+function PageContent({ page, upstream }: { page: ReturnType<typeof usePage>; upstream: Record<SubId, Upstream> }) {
   const [info, setInfo] = useState<Info | null>(null);
   const [error, setError] = useState<string | null>(null);
 
