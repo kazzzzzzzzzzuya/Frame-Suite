@@ -20,7 +20,7 @@ tool may read it. Format (version 1)::
             "multiplier": 2,                # frames on screen per game frame
             "in_game": true                 # made inside the game (the limiter sees them)
           },
-          "optiscaler": {"patched": true, "fsr4_variant": "rdna34-official-411"},
+          "optiscaler": {"patched": true, "fsr4_variant": "rdna4-native"},
           "lsfg": {"multiplier": 1}
         }
       }

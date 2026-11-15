@@ -73,7 +73,7 @@ class Planning(Base):
     def test_z1_extreme_defaults(self):
         self.suite.detected = "z1-extreme"
         opts = self.suite.options("1000")
-        self.assertEqual(opts["variant"], "rdna34-official-411")
+        self.assertEqual(opts["variant"], "rdna4-native")
         self.assertEqual(opts["preset"], "balanced")
         self.assertEqual(self.suite.lsfg_config_for("1000"),
                          {"multiplier": 2, "flow_scale": 0.8, "performance_mode": True})
@@ -167,7 +167,7 @@ class OptiScaler(Base):
         state = self.go(self.suite.setup())
         self.assertTrue(state["optiscaler"]["installed"])
         manifest = json.load(open(os.path.join(self.env.home, "fgmod", "install-manifest.json")))
-        self.assertEqual(manifest["selected_default_variant"], "rdna34-official-411")
+        self.assertEqual(manifest["selected_default_variant"], "rdna4-native")
 
     def test_on_patches_and_merges_launch_options_and_off_restores_everything(self):
         res = self.go(self.suite.boost_on("1000", "Shiny Game", SMOOTH, False))
@@ -179,11 +179,12 @@ class OptiScaler(Base):
         self.assertTrue(lo.endswith("%command% -skipintro"))
         view = res["view"]
         self.assertTrue(view["optiscaler"]["patched"])
-        self.assertEqual(view["optiscaler"]["variant"], "rdna34-official-411")
+        self.assertEqual(view["optiscaler"]["variant"], "rdna4-native")
         self.assertEqual(view["conflicts"], [])
         self.assertEqual(view["menu_key"], "auto")
         self.assertTrue(os.path.isfile(os.path.join(self.dx12, "bin", "dxgi.dll")))
-        self.assertTrue(os.path.isfile(os.path.join(self.dx12, "bin", "amdxcffx64.dll")))   # the 4.1.1 driver override
+        self.assertTrue(os.path.isfile(os.path.join(self.dx12, "bin", "amd_fidelityfx_upscaler_dx12.dll")))
+        self.assertFalse(os.path.exists(os.path.join(self.dx12, "bin", "amdxcffx64.dll")))   # no driver override
         self.assertTrue(any("HelixSR is not downloaded" in w for w in res["warnings"]))
         b = bridge.read(self.env.home)["games"]["1000"]
         self.assertEqual(b["route"], "optiscaler")

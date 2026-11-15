@@ -58,7 +58,7 @@ The profile is chosen from the processor name and can be overridden under **Chip
 
 | Profile | FSR 4 runtime | lsfg-vk (Balanced) |
 |---|---|---|
-| Ryzen Z1 Extreme (Legion Go, ROG Ally) | 4.1.1 driver override / RDNA3-4 | 2×, flow scale 0.8, performance mode |
+| Ryzen Z1 Extreme (Legion Go, ROG Ally) | 4.1.1 SDK (FFX 2.3) | 2×, flow scale 0.8, performance mode |
 | Any other device | Decky-Framegen's default | the same |
 
 The Z1 Extreme runtime is what the owner of a Legion Go reports working; the lsfg-vk values are starting
