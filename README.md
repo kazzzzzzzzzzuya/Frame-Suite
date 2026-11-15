@@ -35,7 +35,8 @@ the game, because no single method fits all:
 | The game | Boost sets up |
 |---|---|
 | DirectX 12 with DLSS, XeSS, FSR 2 or FSR 3.1 | OptiScaler with the FSR 4 runtime of your chip's profile, and HelixSR next to it if you built it |
-| anything else (DirectX 11, Vulkan, added by hand) | an lsfg-vk profile (2×, from the chosen preset) |
+| any other Steam game (DirectX 11, Vulkan, …) | an lsfg-vk profile (2×, from the chosen preset) |
+| a game added to Steam by hand | nothing: use the LSFG-VK page's Non-Steam tab or HelixSR's Other Stores |
 
 - **Only one frame generator per game.** lsfg-vk and a game's own frame generation are never both set
   up by the switch, and the plugin warns when both end up active.

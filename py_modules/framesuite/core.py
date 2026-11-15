@@ -231,7 +231,7 @@ class Suite(object):
         if opts["route"] != "auto":
             route, reason = opts["route"], "Chosen by you for this game."
         elif not f["steam"]:
-            route, reason = "lsfg", "A game added to Steam by hand: lsfg-vk works for these."
+            route, reason = "lsfg", "A game added to Steam by hand: only lsfg-vk works for these."
         elif og.get("patched") or usable:
             route, reason = "optiscaler", "OptiScaler is already in this game."
         elif hx.get("ok") and not dx11 and (hx.get("inputs") or any(not d["dx11"] for d in hx.get("direct", []))):
@@ -261,7 +261,12 @@ class Suite(object):
                 blockers.append({"id": "steam-busy", "text": hx["steam_busy"]})
         else:
             ls = f["ls"]
-            if not ls.get("available"):
+            if not f["steam"]:
+                # decky-lsfg-vk files these games under an id of its own; its page sets them up correctly.
+                blockers.append({"id": "non-steam", "text": "A game added to Steam by hand: set it up on the LSFG-VK "
+                                                            "page (Non-Steam tab), which knows how lsfg-vk names "
+                                                            "these games."})
+            elif not ls.get("available"):
                 blockers.append({"id": "sub-lsfg", "text": "The lsfg-vk part did not load (see Versions)."})
             elif not ls.get("installed"):
                 blockers.append({"id": "setup-lsfg", "text": "lsfg-vk is not installed yet. Run Setup first."})

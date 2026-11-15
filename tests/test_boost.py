@@ -56,13 +56,13 @@ class Planning(Base):
         self.assertEqual(view["plan"]["route"], "lsfg")
         self.assertEqual([b["id"] for b in view["plan"]["blockers"]], ["setup-lsfg"])
 
-    def test_games_added_by_hand_only_get_lsfg(self):
-        view = self.go(self.suite.game("3221225472"))
-        self.assertFalse(view["steam"])
-        self.assertEqual(view["plan"]["route"], "lsfg")
-        self.go(self.suite.set_option("3221225472", "route", "optiscaler"))
-        view = self.go(self.suite.game("3221225472"))
-        self.assertEqual(view["plan"]["blockers"][0]["id"], "non-steam")
+    def test_games_added_by_hand_are_left_to_the_lsfg_page(self):
+        for route in ("auto", "optiscaler"):
+            self.go(self.suite.set_option("3221225472", "route", route))
+            view = self.go(self.suite.game("3221225472"))
+            self.assertFalse(view["steam"])
+            self.assertEqual(view["plan"]["blockers"][0]["id"], "non-steam")
+            self.assertFalse(self.go(self.suite.boost_on("3221225472", "Emu", "", False))["ok"])
 
     def test_the_choice_can_be_overridden_per_game(self):
         self.go(self.suite.set_option("1000", "route", "lsfg"))
