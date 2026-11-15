@@ -79,11 +79,15 @@ export function Home({ info }: { info: Info }) {
     if (!appid || busy) return;
     setBusy(true);
     try {
-      const lo = await launchOptions(appid);
-      if (lo === null) {
-        toast(title, "Steam did not hand out this game's launch options, so nothing was changed. Try again.");
+      const read = await launchOptions(appid);
+      // Only OptiScaler needs the launch options; lsfg-vk works without them.
+      const needed = title !== "Boost" || view?.boost.route === "optiscaler" ||
+        (!view?.boost.on && view?.plan.route === "optiscaler");
+      if (read === null && needed) {
+        toast(title, "Steam did not hand out this game's launch options, so nothing was changed. Try again in a moment.");
         return;
       }
+      const lo = read ?? "";
       let res = await call(lo);
       if (!res.ok && res.need_ack) {
         const ok = await confirm(

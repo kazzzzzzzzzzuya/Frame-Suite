@@ -1,12 +1,16 @@
 // Steam's own client API: the running game and a game's launch options.
 import { Router } from "@decky/ui";
 
-interface AppDetails { strLaunchOptions?: string }
+interface AppDetails { strLaunchOptions?: string; strShortcutLaunchOptions?: string }
 interface Registration { unregister: () => void }
 interface SteamApps {
   RegisterForAppDetails: (appId: number, cb: (d: AppDetails) => void) => Registration;
   SetAppLaunchOptions: (appId: number, options: string) => void | Promise<void>;
+  SetShortcutLaunchOptions: (appId: number, options: string) => void | Promise<void>;
 }
+
+/** Games added to Steam by hand have app ids with the top bit set. */
+const isShortcut = (appId: number) => appId >= 0x80000000;
 
 const apps = (): Partial<SteamApps> | undefined =>
   (window as unknown as { SteamClient?: { Apps?: Partial<SteamApps> } }).SteamClient?.Apps;
@@ -41,8 +45,13 @@ export function readLaunchOptions(appId: string, timeoutMs = 4000): Promise<stri
       fn();
     };
     const timer = setTimeout(() => finish(() => reject(new Error("Steam did not answer in time"))), timeoutMs);
+    const id = Number(appId);
     try {
-      reg = register(Number(appId), (d) => finish(() => resolve(d?.strLaunchOptions ?? "")));
+      // Steam's functions need their own object as "this": called bare, they fail.
+      reg = register.call(apps(), id, (d: AppDetails) => {
+        if (!d) return; // Steam can answer once before it has the details
+        finish(() => resolve((isShortcut(id) ? d.strShortcutLaunchOptions : d.strLaunchOptions) ?? ""));
+      });
     } catch (e) {
       finish(() => reject(e instanceof Error ? e : new Error(String(e))));
     }
@@ -51,9 +60,11 @@ export function readLaunchOptions(appId: string, timeoutMs = 4000): Promise<stri
 
 /** Writes a game's launch options and reads them back: Steam gives no answer of its own. */
 export async function writeLaunchOptions(appId: string, options: string): Promise<void> {
-  const set = apps()?.SetAppLaunchOptions;
+  const a = apps();
+  const id = Number(appId);
+  const set = isShortcut(id) ? a?.SetShortcutLaunchOptions : a?.SetAppLaunchOptions;
   if (!set) throw new Error("Steam's launch options are not available");
-  await set(Number(appId), options);
+  await Promise.resolve(set.call(a, id, options));
   for (let i = 0; i < 6; i++) {
     await new Promise((r) => setTimeout(r, 250));
     if ((await readLaunchOptions(appId)).trim() === options.trim()) return;
