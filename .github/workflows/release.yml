@@ -53,6 +53,21 @@ jobs:
             echo "Nothing new upstream." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # GitHub switches scheduled workflows off in a repository without activity for 60 days.
+      # A quiet stretch upstream must not end the automatic updates.
+      - name: Keep the schedule alive
+        if: steps.decide.outputs.go != 'true' && github.event_name == 'schedule'
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 45 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            date -u +%Y-%m-%d > .github/last-upstream-check
+            git add .github/last-upstream-check
+            git commit -m "Upstream check: nothing new (keeps the scheduled check running)"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
       - name: Version
         if: steps.decide.outputs.go == 'true'
         id: version
@@ -115,5 +130,7 @@ jobs:
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
           Usual causes: an upstream plugin renamed a backend method Frame Suite calls (tests/test_contract.py says which), or changed how it is built."
-          open=$(gh issue list --state open --label upstream-build --json number --jq '.[0].number')
-          if [ -n "$open" ]; then gh issue comment "$open" --body "$body"; else gh issue create --title "A new upstream release did not build" --label upstream-build --body "$body"; fi
+          # One issue per failing change; the six-hourly retries do not repeat themselves in it.
+          title="Not released: ${{ steps.check.outputs.title || 'manual build' }} did not build"
+          same=$(gh issue list --state open --label upstream-build --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ -z "$same" ]; then gh issue create --title "$title" --label upstream-build --body "$body"; fi

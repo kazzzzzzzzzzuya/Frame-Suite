@@ -78,6 +78,17 @@ class Planning(Base):
         self.assertEqual(self.suite.lsfg_config_for("1000"),
                          {"multiplier": 2, "flow_scale": 0.8, "performance_mode": True})
 
+    def test_without_helixsr_the_anti_cheat_question_goes_to_the_user(self):
+        self.suite.subs["helix"].instance = None      # as if that part had failed to load
+        async def bundle():
+            return {"available": True, "installed": True}
+        self.suite.ad.og_bundle = bundle
+        self.assertEqual(self.go(self.suite.game("1000"))["plan"]["route"], "lsfg")   # files unchecked: the safe method
+        self.go(self.suite.set_option("1000", "route", "optiscaler"))
+        res = self.go(self.suite.boost_on("1000", "Shiny Game", "", False))
+        self.assertTrue(res.get("need_ack"), res)
+        self.assertEqual(support.tree(self.dx12), {k: len(v) for k, v in DX12.items()})
+
     def test_games_list(self):
         names = [g["name"] for g in self.go(self.suite.games())]
         self.assertEqual(sorted(names), ["Old Game", "Shiny Game"])
@@ -137,6 +148,14 @@ class Lsfg(Base):
             json.dump({"apps": {"2000": {"state": {"dxvkFrameRate": 60}}}}, f)
         ids = [c["id"] for c in self.go(self.suite.game("2000"))["conflicts"]]
         self.assertIn("two-limiters", ids)
+
+    def test_changes_in_the_lsfg_panel_reach_the_bridge_file(self):
+        calls = self.suite.exported()
+        self.go(calls["lsfg__update_game_config"]("2000", "Old Game", {"multiplier": 3}))
+        b = bridge.read(self.env.home)["games"]["2000"]
+        self.assertEqual((b["boost"], b["route"], b["lsfg"]["multiplier"]), (False, "lsfg", 3))
+        self.go(calls["lsfg__reset_game_config"]("2000"))
+        self.assertNotIn("2000", bridge.read(self.env.home)["games"])
 
     def test_a_lost_profile_is_noticed_and_repaired(self):
         self.go(self.suite.boost_on("2000", "Old Game", "", False))
@@ -252,6 +271,42 @@ class OptiScaler(Base):
         os.remove(os.path.join(self.dx12, "bin", "dxgi.dll"))
         view = self.go(self.suite.game("1000", res["launch_options"]))
         self.assertIn("boost-lost", [c["id"] for c in view["conflicts"]])
+
+    def test_unknown_launch_options_raise_no_false_alarm(self):
+        res = self.go(self.suite.boost_on("1000", "Shiny Game", "", False))
+        self.assertEqual(self.go(self.suite.game("1000", None))["conflicts"], [])
+        self.assertIn("launch-missing", [c["id"] for c in self.go(self.suite.game("1000", ""))["conflicts"]])
+        self.assertEqual(self.go(self.suite.game("1000", res["launch_options"]))["conflicts"], [])
+
+    def test_the_bridge_file_follows_the_games_real_state(self):
+        calls = self.suite.exported()
+        # patched in Decky-Framegen's own panel, never seen by Frame Suite's first page
+        patched = self.go(calls["optiscaler__patch_game"]("1000", "dxgi.dll", "", "rdna23-int8"))
+        self.assertEqual(patched["status"], "success")
+        b = bridge.read(self.env.home)["games"]["1000"]
+        self.assertEqual((b["boost"], b["route"], b["optiscaler"]["patched"]), (False, "optiscaler", True))
+        self.go(self.suite.set_option("1000", "fg_in_game", True))
+        self.assertEqual(bridge.read(self.env.home)["games"]["1000"]["frame_generation"]["multiplier"], 2)
+        # a game update restores the original files behind everyone's back
+        os.remove(os.path.join(self.dx12, "bin", "dxgi.dll"))
+        self.go(self.suite.sync_bridge())
+        self.assertNotIn("1000", bridge.read(self.env.home)["games"])
+        # patched again, then removed in the upstream panel
+        self.go(calls["optiscaler__patch_game"]("1000", "dxgi.dll", "", "rdna23-int8"))
+        self.assertTrue(bridge.read(self.env.home)["games"]["1000"]["optiscaler"]["patched"])
+        self.go(calls["optiscaler__unpatch_game"]("1000"))
+        self.assertNotIn("1000", bridge.read(self.env.home)["games"])
+        self.assertEqual(support.tree(self.dx12), self.before)
+
+    def test_a_boosted_game_whose_files_were_restored_stops_counting_as_optiscaler(self):
+        self.go(self.suite.boost_on("1000", "Shiny Game", "", False))
+        self.go(self.suite.set_option("1000", "fg_in_game", True))
+        os.remove(os.path.join(self.dx12, "bin", "dxgi.dll"))
+        self.go(self.suite.sync_bridge())
+        b = bridge.read(self.env.home)["games"]["1000"]
+        self.assertTrue(b["boost"])                               # still switched on, and shown as lost
+        self.assertFalse(b["optiscaler"]["patched"])
+        self.assertEqual(b["frame_generation"]["multiplier"], 1)  # nothing in the game multiplies frames
 
     def test_menu_key(self):
         self.go(self.suite.boost_on("1000", "Shiny Game", "", False))

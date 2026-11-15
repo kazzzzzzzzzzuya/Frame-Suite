@@ -1,4 +1,5 @@
 import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ProgressBarWithInfo, ToggleField } from "@decky/ui";
+import { useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyFix, boostOff, boostOn, Change, GameView, getGame, getGames, Info, measureClear, measureStart,
@@ -34,7 +35,7 @@ export function Home({ info }: { info: Info }) {
   const refresh = useCallback(async (id: string, name?: string) => {
     const lo = await launchOptions(id);
     try {
-      const v = await getGame(id, lo ?? "", name ?? null);
+      const v = await getGame(id, lo, name ?? null);
       if (current.current === id) {
         setView(v);
         setError(null);
@@ -119,13 +120,18 @@ export function Home({ info }: { info: Info }) {
   };
 
   const option = async (key: string, value: unknown) => {
-    if (!appid) return;
-    const lo = (await launchOptions(appid)) ?? "";
-    const res = await setOption(appid, key, value, lo);
+    if (!appid || busy) return;
+    const res = await setOption(appid, key, value, await launchOptions(appid));
     if (res.view) setView(res.view);
     if (!res.ok) toast("Settings", res.error ?? "Not saved.");
     else if (res.warnings?.length) toast("Settings", res.warnings.join("\n"));
   };
+
+  // The panel stays loaded while the menu is closed: look again whenever it is opened.
+  const visible = useQuickAccessVisible();
+  useEffect(() => {
+    if (visible && appid && !busy) refresh(appid);
+  }, [visible]);
 
   // measuring
   useEffect(() => {
@@ -149,7 +155,9 @@ export function Home({ info }: { info: Info }) {
   const blockers = view?.plan.blockers ?? [];
   const on = !!view?.boost.on;
   const route = on ? view?.boost.route ?? view?.plan.route : view?.plan.route;
-  const locked = on || busy;
+  // Controls are not disabled while a change runs: disabling the focused one makes Steam jump to the
+  // top of the panel. The handlers ignore input meanwhile.
+  const locked = on;
 
   return (
     <>
@@ -159,8 +167,7 @@ export function Home({ info }: { info: Info }) {
             rgOptions={gameOptions}
             selectedOption={appid}
             strDefaultLabel={games.length ? "Choose a game" : "No installed games found"}
-            onChange={(o) => setAppid(String(o.data))}
-            disabled={busy}
+            onChange={(o) => !busy && setAppid(String(o.data))}
           />
         </PanelSectionRow>
       </PanelSection>
@@ -174,7 +181,7 @@ export function Home({ info }: { info: Info }) {
               label="Boost this game"
               description={`${profile?.label ?? info.profile} → ${ROUTE_NAME[route ?? "lsfg"]}`}
               checked={on}
-              disabled={busy || (!on && blockers.length > 0)}
+              disabled={!on && blockers.length > 0}
               onChange={(v) =>
                 v
                   ? change("Boost", (lo) => boostOn(view.appid, view.name, lo, false), true)
@@ -208,7 +215,7 @@ export function Home({ info }: { info: Info }) {
               <Note color={c.level === "error" ? RED : AMBER}>{c.text}</Note>
               {c.fix && (
                 <PanelSectionRow>
-                  <ButtonItem layout="below" disabled={busy} onClick={() => change("Fix", (lo) => applyFix(view.appid, c.fix!, lo))}>
+                  <ButtonItem layout="below" onClick={() => change("Fix", (lo) => applyFix(view.appid, c.fix!, lo))}>
                     {c.fix_label ?? "Fix"}
                   </ButtonItem>
                 </PanelSectionRow>
@@ -240,7 +247,6 @@ export function Home({ info }: { info: Info }) {
                 <DropdownItem
                   label="Preset"
                   description="Quality tracks motion more finely; Battery costs the least."
-                  disabled={busy}
                   rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
                   selectedOption={view.options.preset}
                   onChange={(o) => option("preset", o.data)}
@@ -249,7 +255,6 @@ export function Home({ info }: { info: Info }) {
               <PanelSectionRow>
                 <DropdownItem
                   label="Frames"
-                  disabled={busy}
                   rgOptions={[
                     { data: 0, label: "From the preset (2×)" },
                     { data: 2, label: "2×" },
@@ -294,7 +299,6 @@ export function Home({ info }: { info: Info }) {
                   label="Frame generation is on in the game"
                   description="Tell the plugin when you switch on frame generation in the game's own settings: the Legion Go Toolbox reads this to aim at the doubled frame rate."
                   checked={view.options.fg_in_game}
-                  disabled={busy}
                   onChange={(v) => option("fg_in_game", v)}
                 />
               </PanelSectionRow>
@@ -303,7 +307,7 @@ export function Home({ info }: { info: Info }) {
                   <DropdownItem
                     label="OptiScaler menu key"
                     description="Handhelds have none of these keys: bind the chosen one to a back button in the game's controller layout."
-                    disabled={busy || view.running}
+                    disabled={view.running}
                     rgOptions={[
                       ...info.menu_keys.map((k) => ({ data: k.code, label: k.label })),
                       ...(info.menu_keys.some((k) => k.code === view.menu_key) ? [] : [{ data: view.menu_key, label: `Key ${view.menu_key}` }]),
@@ -385,7 +389,6 @@ export function Home({ info }: { info: Info }) {
           <PanelSectionRow>
             <ButtonItem
               layout="below"
-              disabled={busy}
               description="Removes OptiScaler, HelixSR and the lsfg-vk profile from this game and restores its original files."
               onClick={async () => {
                 if (await confirm("Remove everything from this game?", `OptiScaler, HelixSR and the lsfg-vk profile are taken out of ${view.name}, whichever plugin put them there. The game must be closed.`, "Remove"))

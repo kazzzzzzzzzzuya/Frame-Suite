@@ -29,18 +29,22 @@ class Plugin:
 
     async def _main(self):
         await host.lifecycle(self.suite.subs, "_main", decky.logger)
+        self.suite.start()
         loaded = [s.id for s in self.suite.subs.values() if s.ok]
         decky.logger.info("Frame Suite %s loaded (%s), profile %s", self.suite.version,
                           ", ".join(loaded) or "no upstream", self.suite.profile_id())
 
     async def _unload(self):
-        for task in (self.suite.wizard_task, self.suite.measure_task):
-            if task and not task.done():
-                task.cancel()
+        self.suite.stop()
         await host.lifecycle(self.suite.subs, "_unload", decky.logger)
 
     async def _uninstall(self):
+        # Decky runs this for an update too. One started from our own panel leaves everything in place.
+        if self.suite.updating():
+            decky.logger.info("Frame Suite: updating, uninstall hooks skipped")
+            return
         await host.lifecycle(self.suite.subs, "_uninstall", decky.logger)
+        self.suite.forget()
 
     # --- Frame Suite ---
 
@@ -53,10 +57,13 @@ class Plugin:
     async def suite_games(self):
         return await self.suite.games()
 
-    async def suite_game(self, appid, launch_options="", name=None):
+    async def suite_prepare_update(self):
+        return self.suite.prepare_update()
+
+    async def suite_game(self, appid, launch_options=None, name=None):
         return await self.suite.game(appid, launch_options, name)
 
-    async def suite_set_option(self, appid, key, value, launch_options=""):
+    async def suite_set_option(self, appid, key, value, launch_options=None):
         return await self.suite.set_option(appid, key, value, launch_options)
 
     async def suite_boost_on(self, appid, name, launch_options, ack=False):

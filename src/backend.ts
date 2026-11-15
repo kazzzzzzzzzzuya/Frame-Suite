@@ -58,8 +58,9 @@ export interface MeasureStatus {
 export const getInfo = callable<[], Info>("suite_info");
 export const setProfile = callable<[id: string | null], Info>("suite_set_profile");
 export const getGames = callable<[], { appid: string; name: string; boost?: boolean }[]>("suite_games");
-export const getGame = callable<[appid: string, launch: string, name: string | null], GameView>("suite_game");
-export const setOption = callable<[appid: string, key: string, value: unknown, launch: string],
+/** launch: the game's launch options, or null when Steam did not hand them out. */
+export const getGame = callable<[appid: string, launch: string | null, name: string | null], GameView>("suite_game");
+export const setOption = callable<[appid: string, key: string, value: unknown, launch: string | null],
   { ok: boolean; error?: string; warnings?: string[]; view?: GameView }>("suite_set_option");
 export const boostOn = callable<[appid: string, name: string, launch: string, ack: boolean], Change>("suite_boost_on");
 export const boostOff = callable<[appid: string, launch: string], Change>("suite_boost_off");
@@ -71,4 +72,5 @@ export const runSetup = callable<[step: string], { ok: boolean; error?: string }
 export const measureStart = callable<[appid: string, seconds: number], { ok: boolean; error?: string }>("suite_measure_start");
 export const measureStatus = callable<[], MeasureStatus>("suite_measure_status");
 export const measureClear = callable<[appid: string], { ok: boolean }>("suite_measure_clear");
+export const prepareUpdate = callable<[], { ok: boolean }>("suite_prepare_update");
 export const getUpdates = callable<[force: boolean], Updates>("suite_updates");

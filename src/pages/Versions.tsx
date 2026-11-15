@@ -1,6 +1,6 @@
 import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
-import { getUpdates, Info, Release, setProfile, Updates } from "../backend";
+import { getUpdates, Info, prepareUpdate, Release, setProfile, Updates } from "../backend";
 import { confirm, GREEN, Note, RED, toast } from "../ui";
 
 const PLUGIN_NAME = "Frame Suite"; // must equal plugin.json "name": Decky finds the installed plugin by it
@@ -14,6 +14,8 @@ async function install(r: Release, type: number) {
     return;
   }
   try {
+    // Decky removes the old build first and runs its uninstall hooks: tell the backend this is an update.
+    await prepareUpdate().catch(() => undefined);
     await fn(r.url, PLUGIN_NAME, r.version, r.sha256 ?? "", type);
   } catch (e) {
     toast("Update", `Decky could not start the installation: ${e}`);

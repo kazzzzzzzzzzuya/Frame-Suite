@@ -70,7 +70,7 @@ def check(app_id, target_dir=None, proxy_dll=None, proc="/proc", uid=None):
             res["optiscaler"] = True
         if base == UPSCALER:
             res["fsr4"] = True
-        if "helixsr" in low or "hlx" in base:
+        if "helixsr" in low or base.startswith("hlx"):
             res["helix"] = True
         if "lsfg" in base and base.endswith((".so", ".dll")) or "lsfg-vk" in base:
             res["lsfg"] = True

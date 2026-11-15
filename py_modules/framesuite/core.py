@@ -23,6 +23,15 @@ MENU_KEYS = [  # Windows virtual-key codes OptiScaler understands
     {"code": "0x79", "label": "F10"},
     {"code": "0x7A", "label": "F11"},
 ]
+# Upstream backend methods that change what the bridge file reports (True: first argument is the app id).
+BRIDGE_TRIGGERS = {
+    "optiscaler": {"patch_game": True, "unpatch_game": True, "manual_patch_directory": False,
+                   "manual_unpatch_directory": False},
+    "lsfg": {"update_game_config": True, "reset_game_config": True, "reset_game_configs": False,
+             "reset_all_game_configs": False, "uninstall_lsfg_vk": False},
+}
+BRIDGE_RESYNC_S = 600
+UPDATE_GRACE_S = 900
 UPDATE_TTL = 3 * 3600
 MEASURE_KEEP = 12
 
@@ -87,6 +96,8 @@ class Suite(object):
         self.measure = {"state": "idle"}
         self.measure_task = None
         self.update_cache = {"time": 0, "result": None}
+        self.updating_until = 0.0
+        self.sync_task = None
 
     # --- basics ----------------------------------------------------------------------
 
@@ -109,7 +120,24 @@ class Suite(object):
         if self.subs["helix"].ok:
             # Its own "update this plugin" would install the stand-alone plugin next to this one.
             out["helix" + host.SEP + "check_plugin_update"] = self._no_helix_update
+        # Changes made in the upstream panels reach the bridge file right away.
+        for sub_id, names in BRIDGE_TRIGGERS.items():
+            for name, per_game in names.items():
+                key = sub_id + host.SEP + name
+                if key in out:
+                    out[key] = self._then_sync(out[key], per_game)
         return out
+
+    def _then_sync(self, fn, per_game):
+        async def call(*args, **kwargs):
+            res = await fn(*args, **kwargs)
+            try:
+                appid = str(args[0]) if per_game and args and str(args[0]).lstrip("-").isdigit() else None
+                await self.sync_bridge([appid] if appid else None)
+            except Exception:
+                self.log.exception("Frame Suite: bridge update after an upstream call")
+            return res
+        return call
 
     async def _no_helix_update(self, force=False):
         v = self.subs["helix"].version
@@ -175,7 +203,7 @@ class Suite(object):
             cfg["multiplier"] = max(2, min(4, opts["multiplier"]))
         return cfg
 
-    async def set_option(self, appid, key, value, launch_options=""):
+    async def set_option(self, appid, key, value, launch_options=None):
         if key not in ("preset", "route", "variant", "helix", "fg_in_game", "multiplier"):
             return {"ok": False, "error": "Unknown option."}
         entry = self.store.game(appid, create=True)
@@ -288,7 +316,7 @@ class Suite(object):
                                  "multiply each other's frames and add delay. Use one." % lsfg_mult) if sure else
                                 ("lsfg-vk %d× is on for this game and OptiScaler is installed too. Fine as long as "
                                  "frame generation stays off in the game's own settings." % lsfg_mult)})
-        if patched and og.get("dll"):
+        if patched and og.get("dll") and launch_options is not None:
             env = self.ad.og_env(og["dll"])
             if not launchopts.has_env(launch_options, env) and not launchopts.uses_fgmod_wrapper(launch_options):
                 out.append({"id": "launch-missing", "level": "error", "fix": "launch-repair",
@@ -355,7 +383,8 @@ class Suite(object):
             live_line = "Not running. Start the game to see what really loads."
         return {"active": [l.strip() for l in lines], "live": live_line}
 
-    async def game(self, appid, launch_options="", name=None):
+    async def game(self, appid, launch_options=None, name=None):
+        """launch_options None: unknown (Steam did not hand them out), so nothing is said about them."""
         appid = str(appid)
         f = await self._facts(appid)
         entry = self.store.game(appid)
@@ -381,7 +410,7 @@ class Suite(object):
             "running": bool(livecheck.get("running") or (f["hx"].get("ok") and f["hx"].get("running"))),
             "live": livecheck,
             "menu_key": self._menu_key(og),
-            "conflicts": self._conflicts(appid, f, entry, launch_options or "", opts),
+            "conflicts": self._conflicts(appid, f, entry, launch_options, opts),
             "summary": self._summary(f, entry, plan, livecheck),
             "measure": self.store.data.get("measure", {}).get(appid, []),
             "busy": bool(self.busy.get(appid)),
@@ -390,31 +419,105 @@ class Suite(object):
             self._write_bridge(appid, view)
         return view
 
-    def _bridge_game(self, view):
-        lsfg_mult = int(((view["lsfg"].get("config") or {}).get("multiplier")) or 1)
-        patched = bool(view["optiscaler"].get("patched"))
-        route = view["boost"]["route"] if view["boost"]["on"] else \
-            ("optiscaler" if patched else "lsfg" if lsfg_mult > 1 else None)
+    def _bridge_entry(self, appid, name, patched, variant, lsfg_mult):
+        entry = self.store.game(appid) or {}
+        boost = entry.get("boost") or {}
+        on = bool(boost.get("on"))
+        route = boost.get("route") if on else ("optiscaler" if patched else "lsfg" if lsfg_mult > 1 else None)
+        if route is None and not on:
+            return None
         return {
-            "name": view["name"], "boost": view["boost"]["on"], "route": route,
-            "frame_generation": bridge.frame_generation(route, view["options"], lsfg_mult, patched),
-            "optiscaler": {"patched": patched, "fsr4_variant": view["optiscaler"].get("variant")},
+            "name": name or entry.get("name") or "App %s" % appid, "boost": on, "route": route,
+            "frame_generation": bridge.frame_generation(route, self.options(appid), lsfg_mult, patched),
+            "optiscaler": {"patched": bool(patched), "fsr4_variant": variant},
             "lsfg": {"multiplier": lsfg_mult},
         }
 
-    def _write_bridge(self, appid, view):
+    def _bridge_put(self, entries):
+        """entries: appid -> entry or None (remove). Written only when something changed."""
         try:
             current = (bridge.read(self.home) or {}).get("games") or {}
             games = {k: v for k, v in current.items() if isinstance(v, dict)}
-            entry = self._bridge_game(view)
-            if entry["route"] is None and not entry["boost"]:
-                games.pop(appid, None)
-            else:
-                games[appid] = entry
+            for appid, entry in entries.items():
+                if entry is None:
+                    games.pop(appid, None)
+                else:
+                    games[appid] = entry
             if games != current or not os.path.isfile(bridge.path(self.home)):
                 bridge.write(self.home, self.version, self.profile_id(), games)
         except OSError:
             self.log.exception("Frame Suite: could not write the bridge file")
+
+    def _write_bridge(self, appid, view):
+        lsfg_mult = int(((view["lsfg"].get("config") or {}).get("multiplier")) or 1)
+        self._bridge_put({appid: self._bridge_entry(
+            appid, view["name"], bool(view["optiscaler"].get("patched")),
+            view["optiscaler"].get("variant"), lsfg_mult)})
+
+    async def sync_bridge(self, appids=None):
+        """Bring the bridge file in step with the games' real state: for the given games, or for every
+        game it lists or Frame Suite has settings for. Other tools read it without asking us, so it must
+        not keep saying OptiScaler is in a game after a game update restored the files."""
+        if appids is None:
+            known = set(((bridge.read(self.home) or {}).get("games") or {}))
+            known |= set(self.store.data.get("games", {}))
+            appids = sorted(known)
+        entries = {}
+        configs = None
+        if self.ad.has("lsfg"):
+            res = await self._safe(self.ad.call("lsfg", "get_game_configs"), {})
+            configs = {str(g.get("appid")): g.get("config") or {} for g in (res or {}).get("games", [])} \
+                if isinstance(res, dict) and res.get("games") is not None else None
+        for appid in appids:
+            appid = str(appid)
+            og = await self._safe(self.ad.og_status(appid), {"available": False}) \
+                if not is_shortcut(appid) else {"available": True, "patched": False}
+            if not og.get("available") or og.get("error") or configs is None:
+                continue        # unknown is not "gone": leave the entry as it is
+            try:
+                lsfg_mult = int((configs.get(appid) or {}).get("multiplier") or 1)
+            except (TypeError, ValueError):
+                lsfg_mult = 1
+            entries[appid] = self._bridge_entry(appid, og.get("name"), bool(og.get("patched")),
+                                                og.get("variant"), lsfg_mult)
+        if entries:
+            self._bridge_put(entries)
+        return len(entries)
+
+    async def _sync_forever(self):
+        while True:
+            try:
+                await self.sync_bridge()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.log.exception("Frame Suite: bridge resync")
+            await asyncio.sleep(BRIDGE_RESYNC_S)
+
+    def start(self):
+        if self.sync_task is None or self.sync_task.done():
+            self.sync_task = asyncio.ensure_future(self._sync_forever())
+
+    def stop(self):
+        for task in (self.wizard_task, self.measure_task, self.sync_task):
+            if task and not task.done():
+                task.cancel()
+
+    def prepare_update(self):
+        """The panel is about to hand a newer build to Decky. Decky runs the uninstall hooks for an
+        update as well; within this window they are skipped, so an update does not undo anything."""
+        self.updating_until = time.time() + UPDATE_GRACE_S
+        return {"ok": True}
+
+    def updating(self):
+        return time.time() < self.updating_until
+
+    def forget(self):
+        """The plugin is being removed for good: other tools must not keep following its file."""
+        try:
+            os.unlink(bridge.path(self.home))
+        except OSError:
+            pass
 
     # --- the switch -------------------------------------------------------------------
 
@@ -451,9 +554,14 @@ class Suite(object):
 
         if route == "optiscaler":
             hx, og = f["hx"], f["og"]
-            if hx.get("ok") and hx.get("anticheat") and not (ack or self.store.data.get("acks", {}).get(appid)):
+            acked = ack or self.store.data.get("acks", {}).get(appid)
+            if hx.get("ok") and hx.get("anticheat") and not acked:
                 return {"ok": False, "need_ack": True, "anticheat": hx["anticheat"],
                         "error": "This game ships anti-cheat (%s)." % ", ".join(hx["anticheat"][:2])}
+            if not hx.get("ok") and not og.get("patched") and not acked:
+                # The anti-cheat check is HelixSR Manager's; without it the question is put to the user.
+                return {"ok": False, "need_ack": True, "anticheat": ["could not be checked for anti-cheat"],
+                        "error": "The game could not be checked for anti-cheat."}
             if ack:
                 self.store.data.setdefault("acks", {})[appid] = True
                 await self._safe(self.ad.helix_ack(appid, True), None)
