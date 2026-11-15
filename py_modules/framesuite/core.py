@@ -34,6 +34,7 @@ BRIDGE_RESYNC_S = 600
 TOOLBOX_POLL_S = 3.0          # how often the Legion Go Toolbox's request file is looked at
 TOOLBOX_RECHECK_S = 30.0      # ... and acted on even when unchanged (stale requests expire)
 LSFG_RECHECK_S = 120.0
+TOOLBOX_GONE_S = 600.0        # the request file away this long (not just during a toolbox update): take back
 UPDATE_GRACE_S = 900
 UPDATE_TTL = 3 * 3600
 MEASURE_KEEP = 12
@@ -106,6 +107,7 @@ class Suite(object):
         self._tb_stamp = None
         self._tb_checked = 0.0
         self._lsfg_ready = False
+        self._tb_gone_since = None
         self._lsfg_checked = 0.0
 
     # --- basics ----------------------------------------------------------------------
@@ -610,6 +612,9 @@ class Suite(object):
             self._lsfg_checked = now
         reqs = toolbox.read(self.home, now)
         recs = self.store.data.setdefault("toolbox", {})
+        gone = stamp is None
+        self._tb_gone_since = (self._tb_gone_since or now) if gone else None
+        keep_standby = gone and now - self._tb_gone_since < TOOLBOX_GONE_S
         if not reqs and not recs:
             self._bridge_put({})          # keeps the top-level answers current
             return
@@ -670,8 +675,15 @@ class Suite(object):
                 await self._tb_release(appid, rec, configs)
         released = [a for a in recs if a not in reqs]
         for appid in released:
+            if keep_standby:
+                # Probably a toolbox update (its uninstall step removes the file, the new
+                # version writes it again): frame generation off, the profiles stay a while.
+                await self._tb_release(appid, recs[appid], configs)
+                continue
             await self._tb_release(appid, recs[appid], configs, remove=True)
             del recs[appid]
+        if keep_standby:
+            released = []
         if json.dumps(recs, sort_keys=True) != before:
             self.store.save()
             # Only the games that changed: looking at a game's files costs battery.

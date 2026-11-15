@@ -7,7 +7,7 @@ import time
 import unittest
 
 import support
-from framesuite import bridge, launchopts, toolbox
+from framesuite import bridge, core, launchopts, toolbox
 
 DX12 = {"bin/Game.exe": support.EXE_DX12, "bin/nvngx_dlss.dll": b"dlss", "data/pak0.bin": b"x" * 100}
 PLAIN = {"Old.exe": support.EXE_DX11, "data.bin": b"y" * 50}
@@ -224,7 +224,16 @@ class ToolboxRequests(Base):
         self.assertEqual(self.answer("2000")["multiplier"], 2)
         self.ask({"2000": {"standby": True, "multiplier": None}})
         self.assertEqual(self.mult("2000"), 1)
-        os.remove(toolbox.path(self.env.home))                         # goal removed / toolbox uninstalled
+        self.ask({"2000": {"standby": True, "multiplier": 2}})
+        os.remove(toolbox.path(self.env.home))                         # a toolbox update removes the file ...
+        self.go(self.suite.toolbox_sync(force=True))
+        self.assertEqual(self.mult("2000"), 1)                         # ... frame generation off, profile kept
+        self.ask({"2000": {"standby": True, "multiplier": None}})      # ... and the new version writes it again
+        self.assertEqual(self.mult("2000"), 1)
+        self.assertGreater(self.answer("2000")["since"], 0)
+        os.remove(toolbox.path(self.env.home))                         # gone for good (uninstalled)
+        self.go(self.suite.toolbox_sync(force=True))
+        self.suite._tb_gone_since -= core.TOOLBOX_GONE_S + 1
         self.go(self.suite.toolbox_sync(force=True))
         self.assertIsNone(self.mult("2000"))                           # Frame Suite's own profile goes
         self.assertNotIn("2000", bridge.read(self.env.home)["games"])
@@ -241,8 +250,7 @@ class ToolboxRequests(Base):
         self.assertEqual(self.answer("2000")["since"], 0.0)            # active from the game's start
         cfg = self.go(self.suite.ad.lsfg_config("2000"))
         self.assertEqual((cfg["multiplier"], cfg["flow_scale"]), (3, 0.3))
-        os.remove(toolbox.path(self.env.home))
-        self.go(self.suite.toolbox_sync(force=True))
+        self.ask({})                                                   # goal removed in the toolbox
         cfg = self.go(self.suite.ad.lsfg_config("2000"))
         self.assertEqual((cfg["multiplier"], cfg["flow_scale"]), (1, 0.3))
 

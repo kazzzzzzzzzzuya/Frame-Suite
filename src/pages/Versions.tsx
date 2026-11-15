@@ -37,7 +37,13 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
 
   const detected = info.profiles.find((p) => p.id === info.detected);
   const active = info.profiles.find((p) => p.id === info.profile);
-  const older = (updates?.releases ?? []).filter((r) => r.version !== info.version && r.version !== updates?.latest).slice(0, 4);
+  const others = (updates?.releases ?? []).filter((r) => r.version !== info.version);
+  const isOlder = (v: string) => {
+    const k = (x: string) => (x.match(/\d+/g) ?? []).slice(0, 4).map(Number);
+    const [a, b] = [k(v), k(info.version)];
+    for (let i = 0; i < 4; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
+    return false;
+  };
 
   return (
     <>
@@ -81,20 +87,33 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
         <PanelSectionRow>
           <ButtonItem layout="below" disabled={checking} onClick={() => check(true)}>{checking ? "Checking…" : "Check for updates"}</ButtonItem>
         </PanelSectionRow>
-        {older.map((r) => (
-          <PanelSectionRow key={r.version}>
-            <ButtonItem
-              layout="below"
-              description={r.published ? `Published ${new Date(r.published).toLocaleDateString()}` : undefined}
-              onClick={async () => {
-                if (await confirm(`Go back to ${r.version}?`, "Decky installs that earlier build over this one. Your settings and everything set up in games stay.", "Install"))
-                  install(r, DOWNGRADE);
+        {updates?.ok && others.length > 0 && (
+          <PanelSectionRow>
+            <DropdownItem
+              label="Install another version"
+              description="Pick one and confirm. Your settings and everything set up in games stay."
+              strDefaultLabel="Choose a version"
+              rgOptions={others.map((r) => ({
+                data: r.version,
+                label: `${r.version}${r.version === updates.latest ? " · latest" : ""}${isOlder(r.version) ? " · older" : ""}${
+                  r.published ? ` · ${new Date(r.published).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""
+                }`,
+              }))}
+              selectedOption={null}
+              onChange={async (o) => {
+                const r = others.find((x) => x.version === o.data);
+                if (!r) return;
+                const back = isOlder(r.version);
+                if (await confirm(
+                  back ? `Go back to ${r.version}?` : `Install ${r.version}?`,
+                  `Decky installs ${r.version} over ${info.version}. Your settings and everything set up in games stay.`,
+                  "Install",
+                ))
+                  install(r, back ? DOWNGRADE : UPDATE);
               }}
-            >
-              Go back to {r.version}
-            </ButtonItem>
+            />
           </PanelSectionRow>
-        ))}
+        )}
       </PanelSection>
 
       <PanelSection title="For other plugins">
