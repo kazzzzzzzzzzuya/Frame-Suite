@@ -95,12 +95,12 @@ and restores its files, whichever plugin put them there.
 
 Frame Suite writes what it set up per game to `~/.config/frame-suite/bridge.json`
 (format: [`py_modules/framesuite/bridge.py`](py_modules/framesuite/bridge.py)), for the Toolbox's Smooth
-mode and Auto TDP to read: the game's method, and whether frames are multiplied, by how much and where.
+mode and Auto TDP (2.8.0 and newer) to read: the game's method, and whether frames are multiplied, by how much and where.
 
 - **lsfg-vk games** need nothing: the Toolbox already reads lsfg-vk's own settings.
 - **OptiScaler games:** switch on **Frame generation is on in the game** when you enable frame
-  generation in the game's settings. Until the Toolbox reads the bridge file, also choose 2× under its
-  Smooth frame rate → Frame generation.
+  generation in the game's settings. Toolbox 2.8.0 and newer follow it within seconds with Frame
+  generation on *Auto*; with an older Toolbox choose 2× there by hand.
 - Launch options from both plugins live side by side; neither removes the other's.
 
 ## How updates work
