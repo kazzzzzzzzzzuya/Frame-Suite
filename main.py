@@ -63,6 +63,9 @@ class Plugin:
     async def suite_game(self, appid, launch_options=None, name=None):
         return await self.suite.game(appid, launch_options, name)
 
+    async def suite_live(self, appid):
+        return await self.suite.live_state(appid)
+
     async def suite_set_option(self, appid, key, value, launch_options=None):
         return await self.suite.set_option(appid, key, value, launch_options)
 

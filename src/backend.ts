@@ -27,6 +27,7 @@ export interface GameOptions {
 }
 export interface GameView {
   appid: string; name: string; steam: boolean; busy: boolean; running: boolean; acked: boolean;
+  live: LiveState;
   boost: { on: boolean; route: string | null; time: number | null; applied: Record<string, unknown> };
   options: GameOptions;
   plan: { route: "optiscaler" | "lsfg"; reason: string; blockers: { id: string; text: string }[] };
@@ -66,6 +67,10 @@ export const setProfile = callable<[id: string | null], Info>("suite_set_profile
 export const getGames = callable<[], { appid: string; name: string; boost?: boolean }[]>("suite_games");
 /** launch: the game's launch options, or null when Steam did not hand them out. */
 export const getGame = callable<[appid: string, launch: string | null, name: string | null], GameView>("suite_game");
+export interface LiveState {
+  running: boolean; readable: boolean; optiscaler: boolean; fsr4: boolean; helix: boolean; lsfg: boolean;
+}
+export const getLive = callable<[appid: string], LiveState>("suite_live");
 export const setOption = callable<[appid: string, key: string, value: unknown, launch: string | null],
   { ok: boolean; error?: string; warnings?: string[]; view?: GameView }>("suite_set_option");
 export const boostOn = callable<[appid: string, name: string, launch: string, ack: boolean], Change>("suite_boost_on");

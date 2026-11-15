@@ -2,7 +2,7 @@ import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ProgressBarWit
 import { useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  applyFix, boostOff, boostOn, Change, GameView, getGame, getGames, Info, measureClear, measureStart,
+  applyFix, boostOff, boostOn, Change, GameView, getGame, getGames, getLive, Info, measureClear, measureStart,
   measureStatus, MeasureStatus, removeAll, setMenuKey, setOption,
 } from "../backend";
 import { nav } from "../nav";
@@ -161,6 +161,24 @@ export function Home({ info }: { info: Info }) {
   useEffect(() => {
     if (visible && appid && !busy) refresh(appid);
   }, [visible]);
+
+  // While the menu is open: a game takes a few seconds after Steam starts it before it runs, and
+  // what it loads can change. A cheap check every 3 seconds; the full picture when it changes.
+  const viewRef = useRef<GameView | null>(null);
+  viewRef.current = view;
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setInterval(async () => {
+      const id = current.current;
+      const v = viewRef.current;
+      if (!id || !v || v.appid !== id || busyRef.current) return;
+      const l = await getLive(id).catch(() => null);
+      if (!l || current.current !== id) return;
+      const keys: (keyof typeof l)[] = ["running", "readable", "optiscaler", "fsr4", "helix", "lsfg"];
+      if (keys.some((k) => l[k] !== v.live[k])) void refresh(id);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [visible, refresh]);
 
   // measuring
   useEffect(() => {

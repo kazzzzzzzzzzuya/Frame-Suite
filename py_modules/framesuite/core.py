@@ -102,6 +102,7 @@ class Suite(object):
         self.updating_until = 0.0
         self.sync_task = None
         self.toolbox_task = None
+        self._live_target = {}       # appid -> (OptiScaler's folder, its DLL), from the last full look
         self._tb_stamp = None
         self._tb_checked = 0.0
         self._lsfg_ready = False
@@ -400,6 +401,7 @@ class Suite(object):
         opts = self.options(appid)
         plan = self._plan(appid, f)
         og = f["og"]
+        self._live_target[appid] = (og.get("target_dir"), og.get("dll"))
         livecheck = await asyncio.to_thread(live.check, appid, og.get("target_dir"), og.get("dll"), self.proc)
         name = name or og.get("name") or f["hx"].get("name") or (entry or {}).get("name") or "App %s" % appid
         boost = dict((entry or {}).get("boost") or {"on": False})
@@ -449,6 +451,12 @@ class Suite(object):
                               "since": tb.get("since"), "multiplier": tb.get("applied"),
                               "refused": tb.get("refused")}
         return out
+
+    async def live_state(self, appid):
+        """Cheap: only whether the game runs and what it has loaded (no look at its files).
+        The page polls this and asks for the full picture when it changes."""
+        target, dll = self._live_target.get(str(appid), (None, None))
+        return await asyncio.to_thread(live.check, str(appid), target, dll, self.proc)
 
     def _bridge_top(self):
         return {"lsfg_ready": bool(self._lsfg_ready), "toolbox_fg": self.toolbox_allowed()}

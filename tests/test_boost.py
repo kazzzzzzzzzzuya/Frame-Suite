@@ -90,6 +90,22 @@ class Planning(Base):
         self.assertTrue(res.get("need_ack"), res)
         self.assertEqual(support.tree(self.dx12), {k: len(v) for k, v in DX12.items()})
 
+    def test_the_cheap_live_check_sees_a_game_start_and_end(self):
+        proc = os.path.join(self.env.tmp, "proc")
+        self.assertFalse(self.go(self.suite.live_state("1000"))["running"])
+        d = os.path.join(proc, "4242")
+        os.makedirs(d)
+        with open(os.path.join(d, "environ"), "wb") as f:
+            f.write(b"SteamAppId=1000\0")
+        with open(os.path.join(d, "maps"), "w") as f:
+            f.write("7f-80 r-xp 0 0:0 1 %s/bin/Game.exe\n" % self.dx12)
+        state = self.go(self.suite.live_state("1000"))
+        self.assertEqual((state["running"], state["readable"]), (True, True))
+        self.assertTrue(self.go(self.suite.game("1000"))["running"])
+        import shutil
+        shutil.rmtree(d)
+        self.assertFalse(self.go(self.suite.live_state("1000"))["running"])
+
     def test_games_list(self):
         names = [g["name"] for g in self.go(self.suite.games())]
         self.assertEqual(sorted(names), ["Old Game", "Shiny Game"])
