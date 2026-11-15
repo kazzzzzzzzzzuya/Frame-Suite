@@ -96,5 +96,8 @@ class Plugin:
     async def suite_measure_clear(self, appid):
         return self.suite.measure_clear(appid)
 
+    async def suite_set_toolbox_fg(self, on):
+        return await self.suite.set_toolbox_allowed(bool(on))
+
     async def suite_updates(self, force=False):
         return await self.suite.updates(force)

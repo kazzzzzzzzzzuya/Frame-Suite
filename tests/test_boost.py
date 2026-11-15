@@ -3,10 +3,11 @@ on a temporary home folder and a made-up Steam library."""
 
 import json
 import os
+import time
 import unittest
 
 import support
-from framesuite import bridge, launchopts
+from framesuite import bridge, launchopts, toolbox
 
 DX12 = {"bin/Game.exe": support.EXE_DX12, "bin/nvngx_dlss.dll": b"dlss", "data/pak0.bin": b"x" * 100}
 PLAIN = {"Old.exe": support.EXE_DX11, "data.bin": b"y" * 50}
@@ -165,6 +166,94 @@ class Lsfg(Base):
         res = self.go(self.suite.fix("2000", "boost-reapply", ""))
         self.assertTrue(res["ok"], res)
         self.assertIn('"2000"', open(self.conf).read())
+
+
+@unittest.skipUnless((support.have_upstreams() and support.have_binaries()) or support.REQUIRE,
+                     "needs the built plugin with its binaries (run the build)")
+class ToolboxRequests(Base):
+    """The Legion Go Toolbox's Battery playtime asking for frame generation."""
+
+    def setUp(self):
+        super().setUp()
+        self.setup_step("lsfg")
+        self.lsfg_ready()
+        self.conf = os.path.join(self.env.home, ".config", "lsfg-vk", "conf.toml")
+
+    def ask(self, games, updated=None):
+        path = toolbox.path(self.env.home)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"version": 1, "updated": int(time.time() if updated is None else updated),
+                       "games": games}, f)
+        self.go(self.suite.toolbox_sync(force=True))
+
+    def mult(self, appid):
+        cfg = self.go(self.suite.ad.lsfg_config(appid))
+        return None if cfg is None else int(cfg["multiplier"])
+
+    def answer(self, appid):
+        return bridge.read(self.env.home)["games"][appid]["toolbox"]
+
+    def test_standby_then_on_then_off_then_gone(self):
+        self.ask({"2000": {"standby": True, "multiplier": None}})
+        self.assertEqual(self.mult("2000"), 1)                         # prepared, off
+        a = self.answer("2000")
+        self.assertTrue(a["standby"])
+        self.assertGreater(a["since"], 0)
+        self.assertIsNone(a["multiplier"])
+        top = bridge.read(self.env.home)
+        self.assertEqual((top["lsfg_ready"], top["toolbox_fg"]), (True, True))
+        self.ask({"2000": {"standby": True, "multiplier": 2}})
+        self.assertEqual(self.mult("2000"), 2)
+        self.assertEqual(self.answer("2000")["multiplier"], 2)
+        self.ask({"2000": {"standby": True, "multiplier": None}})
+        self.assertEqual(self.mult("2000"), 1)
+        os.remove(toolbox.path(self.env.home))                         # goal removed / toolbox uninstalled
+        self.go(self.suite.toolbox_sync(force=True))
+        self.assertIsNone(self.mult("2000"))                           # Frame Suite's own profile goes
+        self.assertNotIn("2000", bridge.read(self.env.home)["games"])
+
+    def test_a_stale_request_switches_off(self):
+        self.ask({"2000": {"standby": True, "multiplier": 2}})
+        self.assertEqual(self.mult("2000"), 2)
+        self.ask({"2000": {"standby": True, "multiplier": 2}}, updated=time.time() - 600)
+        self.assertEqual(self.mult("2000"), 1)
+
+    def test_the_users_own_profile_is_restored_not_removed(self):
+        self.lsfg_profile("2000", "Old Game", {"multiplier": 1, "flow_scale": 0.3})
+        self.ask({"2000": {"standby": True, "multiplier": 3}})
+        self.assertEqual(self.answer("2000")["since"], 0.0)            # active from the game's start
+        cfg = self.go(self.suite.ad.lsfg_config("2000"))
+        self.assertEqual((cfg["multiplier"], cfg["flow_scale"]), (3, 0.3))
+        os.remove(toolbox.path(self.env.home))
+        self.go(self.suite.toolbox_sync(force=True))
+        cfg = self.go(self.suite.ad.lsfg_config("2000"))
+        self.assertEqual((cfg["multiplier"], cfg["flow_scale"]), (1, 0.3))
+
+    def test_switched_off_in_frame_suite(self):
+        self.ask({"2000": {"standby": True, "multiplier": 2}})
+        self.go(self.suite.set_toolbox_allowed(False))
+        self.assertIsNone(self.mult("2000"))
+        a = self.answer("2000")
+        self.assertFalse(a["standby"])
+        self.assertIn("Switched off", a["refused"])
+        self.assertFalse(bridge.read(self.env.home)["toolbox_fg"])
+        self.go(self.suite.set_toolbox_allowed(True))
+        self.assertEqual(self.mult("2000"), 2)
+
+    def test_remove_everything_is_not_undone_by_the_toolbox(self):
+        self.ask({"2000": {"standby": True, "multiplier": None}})
+        res = self.go(self.suite.remove_all("2000", ""))
+        self.assertTrue(res["ok"], res)
+        self.go(self.suite.toolbox_sync(force=True))
+        self.assertIsNone(self.mult("2000"))
+        self.assertIn("Removed", self.answer("2000")["refused"])
+
+    def test_the_games_own_frame_generation_wins(self):
+        self.go(self.suite.set_option("2000", "fg_in_game", True))
+        self.ask({"2000": {"standby": True, "multiplier": 2}})
+        self.assertIsNone(self.mult("2000"))
+        self.assertIn("own frame generation", self.answer("2000")["refused"])
 
 
 @unittest.skipUnless((support.have_upstreams() and support.have_binaries()) or support.REQUIRE,

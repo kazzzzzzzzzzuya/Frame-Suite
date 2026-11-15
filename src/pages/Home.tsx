@@ -203,6 +203,15 @@ export function Home({ info }: { info: Info }) {
             {"\n"}
             {view.summary.live}
           </Note>
+          {view.toolbox && (
+            <Note color={view.toolbox.refused ? AMBER : undefined}>
+              {view.toolbox.refused
+                ? `Legion Go Toolbox battery goal: frame generation not available – ${view.toolbox.refused}`
+                : view.toolbox.applied
+                  ? `Legion Go Toolbox battery goal: lsfg-vk ${view.toolbox.applied}× is on to save battery.`
+                  : `Legion Go Toolbox battery goal: lsfg-vk is ready for this game${view.toolbox.created ? " (off until the battery needs it)" : ""}.`}
+            </Note>
+          )}
           {on && route === "optiscaler" && (
             <Note>
               In the game's graphics settings choose DLSS (or FSR / XeSS if it has no DLSS). OptiScaler's own menu

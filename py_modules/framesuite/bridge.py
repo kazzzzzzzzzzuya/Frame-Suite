@@ -26,6 +26,12 @@ tool may read it. Format (version 1)::
       }
     }
 
+Top level, for the Legion Go Toolbox's Battery playtime: "lsfg_ready"
+(lsfg-vk and Lossless Scaling are set up) and "toolbox_fg" (the user lets the
+toolbox switch frame generation). Per game, "toolbox" answers its requests
+(see toolbox.py): {"standby", "since" (when the lsfg-vk profile was made; 0:
+it was there before), "multiplier" (switched on now, or null), "refused"}.
+
 Only games Frame Suite manages or was told about are listed. A reader should
 ignore a file whose ``version`` it does not know.
 """
@@ -55,10 +61,11 @@ def frame_generation(route, options, lsfg_multiplier, patched):
     return {"source": "none", "multiplier": 1, "in_game": False}
 
 
-def write(home, suite_version, profile, games):
+def write(home, suite_version, profile, games, extra=None):
     target = path(home)
-    data = {"version": VERSION, "updated": int(time.time()), "suite_version": suite_version,
-            "profile": profile, "games": games}
+    data = dict(extra or {})
+    data.update({"version": VERSION, "updated": int(time.time()), "suite_version": suite_version,
+                 "profile": profile, "games": games})
     os.makedirs(os.path.dirname(target), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".bridge-")
     try:

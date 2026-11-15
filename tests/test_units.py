@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 import support  # noqa: F401 - sets sys.path
-from framesuite import bridge, chip, core, ini, launchopts, live
+from framesuite import bridge, chip, core, ini, launchopts, live, toolbox
 
 ENV = {"WINEDLLOVERRIDES": "dxgi=n,b", "SteamDeck": "0"}
 
@@ -146,6 +146,44 @@ class Bridge(unittest.TestCase):
         self.assertEqual(fg("optiscaler", {"fg_in_game": False}, 2, True)["source"], "lsfg")
         self.assertEqual(fg("lsfg", {"fg_in_game": True}, 2, True)["source"], "lsfg")
         self.assertEqual(fg(None, {}, 1, False), {"source": "none", "multiplier": 1, "in_game": False})
+
+
+class ToolboxFile(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.home)
+        os.makedirs(os.path.dirname(toolbox.path(self.home)))
+
+    def write(self, data):
+        with open(toolbox.path(self.home), "w") as f:
+            f.write(data if isinstance(data, str) else json.dumps(data))
+
+    def test_reads_and_checks(self):
+        self.write({"version": 1, "updated": 1000, "games": {
+            "10": {"standby": True, "multiplier": 2},
+            "11": {"standby": True, "multiplier": 9},
+            "12": {"standby": True, "multiplier": True},
+            "13": {"standby": False, "multiplier": 2},
+            "3221225472": {"standby": True, "multiplier": 2},
+            "x": {"standby": True}, "14": "yes"}})
+        self.assertEqual(toolbox.read(self.home, 1010), {
+            "10": {"standby": True, "multiplier": 2},
+            "11": {"standby": True, "multiplier": None},
+            "12": {"standby": True, "multiplier": None}})
+        # stale: standby stays, frame generation off
+        self.assertEqual(toolbox.read(self.home, 5000)["10"], {"standby": True, "multiplier": None})
+
+    def test_bad_files(self):
+        for data in ("{", "[]", '{"version": 2, "games": {}}', '{"version": 1, "games": []}', ""):
+            self.write(data)
+            self.assertEqual(toolbox.read(self.home, 0), {}, data)
+        os.remove(toolbox.path(self.home))
+        self.assertEqual(toolbox.read(self.home, 0), {})
+        other = os.path.join(self.home, "other.json")
+        with open(other, "w") as f:
+            json.dump({"version": 1, "updated": 0, "games": {"1": {"standby": True}}}, f)
+        os.symlink(other, toolbox.path(self.home))
+        self.assertEqual(toolbox.read(self.home, 0), {})
 
 
 class Live(unittest.TestCase):

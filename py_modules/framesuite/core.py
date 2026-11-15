@@ -13,7 +13,7 @@ import sys
 import tempfile
 import time
 
-from . import adapters, bridge, chip, host, ini, launchopts, live
+from . import adapters, bridge, chip, host, ini, launchopts, live, toolbox
 
 ROUTES = ("optiscaler", "lsfg")
 MENU_KEYS = [  # Windows virtual-key codes OptiScaler understands
@@ -31,6 +31,9 @@ BRIDGE_TRIGGERS = {
              "reset_all_game_configs": False, "uninstall_lsfg_vk": False},
 }
 BRIDGE_RESYNC_S = 600
+TOOLBOX_POLL_S = 3.0          # how often the Legion Go Toolbox's request file is looked at
+TOOLBOX_RECHECK_S = 30.0      # ... and acted on even when unchanged (stale requests expire)
+LSFG_RECHECK_S = 120.0
 UPDATE_GRACE_S = 900
 UPDATE_TTL = 3 * 3600
 MEASURE_KEEP = 12
@@ -98,6 +101,11 @@ class Suite(object):
         self.update_cache = {"time": 0, "result": None}
         self.updating_until = 0.0
         self.sync_task = None
+        self.toolbox_task = None
+        self._tb_stamp = None
+        self._tb_checked = 0.0
+        self._lsfg_ready = False
+        self._lsfg_checked = 0.0
 
     # --- basics ----------------------------------------------------------------------
 
@@ -168,6 +176,7 @@ class Suite(object):
             "variants": self.ad.og_variants(),
             "menu_keys": MENU_KEYS,
             "bridge": bridge.path(self.home),
+            "toolbox_fg": self.toolbox_allowed(),
         }
 
     def set_profile(self, profile_id):
@@ -413,6 +422,7 @@ class Suite(object):
             "conflicts": self._conflicts(appid, f, entry, launch_options, opts),
             "summary": self._summary(f, entry, plan, livecheck),
             "measure": self.store.data.get("measure", {}).get(appid, []),
+            "toolbox": (self.store.data.get("toolbox") or {}).get(appid),
             "busy": bool(self.busy.get(appid)),
         }
         if entry is not None or og.get("patched") or f["lcfg"]:
@@ -424,27 +434,40 @@ class Suite(object):
         boost = entry.get("boost") or {}
         on = bool(boost.get("on"))
         route = boost.get("route") if on else ("optiscaler" if patched else "lsfg" if lsfg_mult > 1 else None)
-        if route is None and not on:
+        tb = (self.store.data.get("toolbox") or {}).get(appid)
+        if route is None and not on and not tb:
             return None
-        return {
-            "name": name or entry.get("name") or "App %s" % appid, "boost": on, "route": route,
+        out = {
+            "name": name or entry.get("name") or (tb or {}).get("name") or "App %s" % appid,
+            "boost": on, "route": route,
             "frame_generation": bridge.frame_generation(route, self.options(appid), lsfg_mult, patched),
             "optiscaler": {"patched": bool(patched), "fsr4_variant": variant},
             "lsfg": {"multiplier": lsfg_mult},
         }
+        if tb:
+            out["toolbox"] = {"standby": tb.get("since") is not None and not tb.get("refused"),
+                              "since": tb.get("since"), "multiplier": tb.get("applied"),
+                              "refused": tb.get("refused")}
+        return out
+
+    def _bridge_top(self):
+        return {"lsfg_ready": bool(self._lsfg_ready), "toolbox_fg": self.toolbox_allowed()}
 
     def _bridge_put(self, entries):
         """entries: appid -> entry or None (remove). Written only when something changed."""
         try:
-            current = (bridge.read(self.home) or {}).get("games") or {}
+            data = bridge.read(self.home) or {}
+            current = data.get("games") or {}
             games = {k: v for k, v in current.items() if isinstance(v, dict)}
             for appid, entry in entries.items():
                 if entry is None:
                     games.pop(appid, None)
                 else:
                     games[appid] = entry
-            if games != current or not os.path.isfile(bridge.path(self.home)):
-                bridge.write(self.home, self.version, self.profile_id(), games)
+            top = self._bridge_top()
+            if games != current or any(data.get(k) != v for k, v in top.items()) or \
+                    not os.path.isfile(bridge.path(self.home)):
+                bridge.write(self.home, self.version, self.profile_id(), games, top)
         except OSError:
             self.log.exception("Frame Suite: could not write the bridge file")
 
@@ -461,6 +484,7 @@ class Suite(object):
         if appids is None:
             known = set(((bridge.read(self.home) or {}).get("games") or {}))
             known |= set(self.store.data.get("games", {}))
+            known |= set(self.store.data.get("toolbox", {}))
             appids = sorted(known)
         entries = {}
         configs = None
@@ -480,8 +504,7 @@ class Suite(object):
                 lsfg_mult = 1
             entries[appid] = self._bridge_entry(appid, og.get("name"), bool(og.get("patched")),
                                                 og.get("variant"), lsfg_mult)
-        if entries:
-            self._bridge_put(entries)
+        self._bridge_put(entries)
         return len(entries)
 
     async def _sync_forever(self):
@@ -497,9 +520,11 @@ class Suite(object):
     def start(self):
         if self.sync_task is None or self.sync_task.done():
             self.sync_task = asyncio.ensure_future(self._sync_forever())
+        if self.toolbox_task is None or self.toolbox_task.done():
+            self.toolbox_task = asyncio.ensure_future(self._toolbox_forever())
 
     def stop(self):
-        for task in (self.wizard_task, self.measure_task, self.sync_task):
+        for task in (self.wizard_task, self.measure_task, self.sync_task, self.toolbox_task):
             if task and not task.done():
                 task.cancel()
 
@@ -518,6 +543,133 @@ class Suite(object):
             os.unlink(bridge.path(self.home))
         except OSError:
             pass
+
+    # --- the Legion Go Toolbox's Battery playtime -------------------------------------------
+
+    def toolbox_allowed(self):
+        return self.store.data.get("toolbox_fg", True) is not False
+
+    async def set_toolbox_allowed(self, on):
+        self.store.data["toolbox_fg"] = bool(on)
+        self.store.save()
+        await self.toolbox_sync(force=True)
+        return self.info()
+
+    async def _toolbox_forever(self):
+        while True:
+            try:
+                await self.toolbox_sync()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.log.exception("Frame Suite: toolbox requests")
+            await asyncio.sleep(TOOLBOX_POLL_S)
+
+    def _standby_config(self):
+        p = self.profile()
+        preset = p["presets"].get("battery") or p["presets"][p["default_preset"]]
+        return dict(preset.get("lsfg") or {}, multiplier=1)
+
+    async def _tb_set_multiplier(self, appid, profile_name, cfg, mult):
+        res = await self.ad.lsfg_set(appid, profile_name, dict(cfg, multiplier=int(mult)))
+        if res["ok"]:
+            cfg["multiplier"] = int(mult)
+        return res
+
+    async def _tb_release(self, appid, rec, configs, remove=False):
+        """Frame generation back to what it was; with remove, the standby profile goes too
+        (only one Frame Suite made, still at 1x, and not in use by Boost)."""
+        name, cfg = configs.get(appid, (None, None))
+        if rec.get("applied") is not None and cfg is not None:
+            res = await self._tb_set_multiplier(appid, name, cfg, rec.get("restore") or 1)
+            if res["ok"]:
+                rec["applied"] = rec["restore"] = None
+        boost = (self.store.game(appid) or {}).get("boost") or {}
+        if remove and rec.get("created") and cfg is not None and int(cfg.get("multiplier") or 1) <= 1 \
+                and not (boost.get("on") and boost.get("route") == "lsfg"):
+            await self._safe(self.ad.lsfg_reset(appid), {"ok": False})
+
+    async def toolbox_sync(self, force=False):
+        """Act on the toolbox's requests (see toolbox.py) and answer in the bridge file."""
+        now = time.time()
+        stamp = toolbox.stamp(self.home)
+        if not force and stamp == self._tb_stamp and now - self._tb_checked < TOOLBOX_RECHECK_S:
+            return
+        self._tb_stamp, self._tb_checked = stamp, now
+        if force or now - self._lsfg_checked >= LSFG_RECHECK_S:
+            ls = await self._safe(self.ad.lsfg_state(), {"installed": False, "lossless": False})
+            self._lsfg_ready = bool(ls.get("installed") and ls.get("lossless"))
+            self._lsfg_checked = now
+        reqs = toolbox.read(self.home, now)
+        recs = self.store.data.setdefault("toolbox", {})
+        if not reqs and not recs:
+            self._bridge_put({})          # keeps the top-level answers current
+            return
+        before = json.dumps(recs, sort_keys=True)
+        configs = {}
+        if self.ad.has("lsfg"):
+            res = await self._safe(self.ad.call("lsfg", "get_game_configs"), {})
+            configs = {str(g.get("appid")): (g.get("profile"), dict(g.get("config") or {}))
+                       for g in (res or {}).get("games", [])}
+        allowed = self.toolbox_allowed()
+        for appid, req in reqs.items():
+            rec = recs.setdefault(appid, {"created": False, "since": None, "restore": None,
+                                          "applied": None, "refused": None, "blocked": False})
+            opts = self.options(appid)
+            reason = None
+            if not allowed:
+                reason = "Switched off in Frame Suite (Chip, versions and updates)."
+            elif not self._lsfg_ready:
+                reason = "lsfg-vk or Lossless Scaling is not set up (Frame Suite's Setup)."
+            elif rec.get("blocked"):
+                reason = "Removed in Frame Suite for this game."
+            elif opts["fg_in_game"]:
+                reason = "The game's own frame generation is in use."
+            if reason:
+                await self._tb_release(appid, rec, configs, remove=not allowed)
+                rec["refused"] = reason
+                if not allowed and rec.get("created"):
+                    rec["created"], rec["since"] = False, None
+                continue
+            rec["refused"] = None
+            name, cfg = configs.get(appid, (None, None))
+            if cfg is None:
+                og = await self._safe(self.ad.og_status(appid), {})
+                rec["name"] = og.get("name") or rec.get("name") or "App %s" % appid
+                res = await self.ad.lsfg_set(appid, rec["name"], self._standby_config())
+                if not res["ok"]:
+                    rec["refused"] = "lsfg-vk did not take the profile: %s" % res["message"]
+                    continue
+                rec.update(created=True, since=now)
+                res = await self._safe(self.ad.call("lsfg", "get_game_configs"), {})
+                configs = {str(g.get("appid")): (g.get("profile"), dict(g.get("config") or {}))
+                           for g in (res or {}).get("games", [])}
+                name, cfg = configs.get(appid, (rec["name"], self._standby_config()))
+            elif rec.get("since") is None:
+                rec["since"] = 0.0      # the user's own profile, there before the game started
+            want = req["multiplier"]
+            cur = int(cfg.get("multiplier") or 1)
+            if want:
+                if rec.get("applied") is None:
+                    rec["restore"] = cur
+                if cur != want:
+                    res = await self._tb_set_multiplier(appid, name, cfg, want)
+                    if not res["ok"]:
+                        rec["refused"] = "lsfg-vk did not take the change: %s" % res["message"]
+                        continue
+                rec["applied"] = want
+            elif rec.get("applied") is not None:
+                await self._tb_release(appid, rec, configs)
+        released = [a for a in recs if a not in reqs]
+        for appid in released:
+            await self._tb_release(appid, recs[appid], configs, remove=True)
+            del recs[appid]
+        if json.dumps(recs, sort_keys=True) != before:
+            self.store.save()
+            # Only the games that changed: looking at a game's files costs battery.
+            await self.sync_bridge(sorted(set(reqs) | set(released)))
+        else:
+            self._bridge_put({})
 
     # --- the switch -------------------------------------------------------------------
 
@@ -718,7 +870,11 @@ class Suite(object):
             entry = self.store.game(appid)
             if entry:
                 entry["boost"] = {"on": False}
-                self.store.save()
+            rec = (self.store.data.get("toolbox") or {}).get(appid)
+            if rec:
+                # The toolbox's standby profile is gone with the rest: not made again for this goal.
+                rec.update(blocked=True, applied=None, restore=None, created=False, since=None)
+            self.store.save()
             if not done and not warnings:
                 done.append("Nothing from the three plugins was in this game.")
             view = await self.game(appid, new_lo, (entry or {}).get("name"))

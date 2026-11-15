@@ -13,6 +13,11 @@ export interface Info {
   variants: { default: string | null; variants: { id: string; label: string }[] };
   menu_keys: { code: string; label: string }[];
   bridge: string;
+  /** The Legion Go Toolbox may switch lsfg-vk for its battery goals. */
+  toolbox_fg: boolean;
+}
+export interface ToolboxRecord {
+  created: boolean; since: number | null; applied: number | null; refused: string | null; blocked?: boolean;
 }
 export interface Conflict { id: string; level: "warn" | "error"; text: string; fix?: string; fix_label?: string }
 export interface Measurement { fps: number; low: number | null; spread: number; label: string; time: number; seconds: number }
@@ -33,6 +38,7 @@ export interface GameView {
   conflicts: Conflict[];
   summary: { active: string[]; live: string };
   measure: Measurement[];
+  toolbox: ToolboxRecord | null;
 }
 export interface Change {
   ok: boolean; error?: string; blocker?: string; need_ack?: boolean; anticheat?: string[];
@@ -73,4 +79,5 @@ export const measureStart = callable<[appid: string, seconds: number], { ok: boo
 export const measureStatus = callable<[], MeasureStatus>("suite_measure_status");
 export const measureClear = callable<[appid: string], { ok: boolean }>("suite_measure_clear");
 export const prepareUpdate = callable<[], { ok: boolean }>("suite_prepare_update");
+export const setToolboxFg = callable<[on: boolean], Info>("suite_set_toolbox_fg");
 export const getUpdates = callable<[force: boolean], Updates>("suite_updates");

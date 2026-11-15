@@ -101,6 +101,16 @@ mode and Auto TDP (2.8.0 and newer) to read: the game's method, and whether fram
 - **OptiScaler games:** switch on **Frame generation is on in the game** when you enable frame
   generation in the game's settings. Toolbox 2.8.0 and newer follow it within seconds with Frame
   generation on *Auto*; with an older Toolbox choose 2× there by hand.
+- **Battery playtime** (Toolbox 2.9.0 and newer): for a game with a battery goal the Toolbox asks
+  Frame Suite for lsfg-vk through `~/.config/lgo-toolbox/framegen.json`. Frame Suite then gives the
+  game an lsfg-vk profile at 1× (off), which lsfg-vk picks up from the game's next start, and switches
+  it to 2× while the battery needs it, so the game makes half the frames and the screen still shows
+  the same. A profile you made yourself is only switched and put back, never removed; a profile Frame
+  Suite made goes again when the goal does. Requests older than three minutes count as off, so a
+  stopped Toolbox cannot leave frame generation on. Never for a game whose own frame generation is
+  marked on, and not again after **Remove everything from this game**. The switch **Let the Legion
+  Go Toolbox use lsfg-vk** (Chip, versions and updates, on by default) turns all of it off and takes
+  back what it changed.
 - Launch options from both plugins live side by side; neither removes the other's.
 
 ## How updates work
