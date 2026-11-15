@@ -30,6 +30,12 @@ export function Home({ info }: { info: Info }) {
   const [busy, setBusy] = useState(false);
   const [measure, setMeasure] = useState<MeasureStatus>({ state: "idle" });
   const current = useRef<string | null>(null);
+  // Polled every 2 seconds below: the page stays loaded while the menu is closed.
+  const seenRunning = useRef<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+
   const profile = info.profiles.find((p) => p.id === info.profile);
 
   const refresh = useCallback(async (id: string, name?: string) => {
@@ -58,9 +64,28 @@ export function Home({ info }: { info: Info }) {
         /* no storage */
       }
       const first = running?.appid ?? (last && list.some((g) => g.appid === last) ? last : list[0]?.appid) ?? null;
+      seenRunning.current = running?.appid ?? null;
+      setRunningId(running?.appid ?? null);
       setAppid(first);
     })();
   }, []);
+
+  // The page stays loaded while the menu is closed: look for the running game every 2 seconds,
+  // as Steam's own panels do. A game that starts is added and selected; one that ends is shown as ended.
+  useEffect(() => {
+    const poll = () => {
+      const r = runningGame();
+      const id = r?.appid ?? null;
+      if (id === seenRunning.current) return;
+      seenRunning.current = id;
+      setRunningId(id);
+      if (r) setGames((list) => (list.some((g) => g.appid === r.appid) ? list : [r, ...list]));
+      if (r && !busyRef.current && current.current !== r.appid) setAppid(r.appid);
+      else if (current.current) void refresh(current.current);   // started or ended: show it
+    };
+    const timer = setInterval(poll, 2000);
+    return () => clearInterval(timer);
+  }, [refresh]);
 
   useEffect(() => {
     current.current = appid;
@@ -154,7 +179,7 @@ export function Home({ info }: { info: Info }) {
 
   const gameOptions = games.map((g) => ({
     data: g.appid,
-    label: `${g.appid === runningGame()?.appid ? "▶ " : ""}${g.name || `App ${g.appid}`}${g.boost ? "  ✓" : ""}`,
+    label: `${g.appid === runningId ? "▶ " : ""}${g.name || `App ${g.appid}`}${g.boost ? "  ✓" : ""}`,
   }));
   const blockers = view?.plan.blockers ?? [];
   const on = !!view?.boost.on;
