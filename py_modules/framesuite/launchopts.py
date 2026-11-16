@@ -168,3 +168,36 @@ def has_env(text, env):
 def uses_fgmod_wrapper(text):
     """Decky-Framegen's older wrapper method (``~/fgmod/fgmod %command%``)."""
     return bool(re.search(r"(^|[\s/])fgmod(\s|$)", text or ""))
+
+
+# --- a wrapper command right before %command% (MAKO's mako-run) -------------------------------
+
+def _base(tok):
+    return tok.strip("'\"").replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def has_wrapper(text, name):
+    return any(_base(t) == name for t in split_tokens(text))
+
+
+def add_wrapper(text, path):
+    """Put `path` right before %command% (after every setting and other wrapper).
+    Returns (new_text, added)."""
+    name = _base(path)
+    tokens = split_tokens(text)
+    if any(_base(t) == name for t in tokens):
+        return text or "", False
+    idx = next((i for i, t in enumerate(tokens) if COMMAND_RE.search(t)), None)
+    if idx is None:
+        # Text without %command% are arguments for the game: they go after it.
+        tokens = [_quote(path), "%command%"] + tokens
+    else:
+        tokens.insert(idx, _quote(path))
+    return " ".join(tokens), True
+
+
+def remove_wrapper(text, name):
+    tokens = [t for t in split_tokens(text) if _base(t) != name]
+    if len(tokens) == 1 and COMMAND_RE.fullmatch(tokens[0]):
+        return ""
+    return " ".join(tokens)

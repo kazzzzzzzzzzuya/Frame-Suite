@@ -5,7 +5,7 @@ import os
 import unittest
 
 import support
-from framesuite import bridge
+from framesuite import bridge, host
 
 
 @unittest.skipUnless(support.have_upstreams() or support.REQUIRE, "upstream plugins are not checked out")
@@ -35,12 +35,12 @@ class Hooks(unittest.TestCase):
 
     def test_start_and_stop(self):
         support.run(self.plugin._main())
-        self.assertEqual(sorted(c[0] for c in self.calls if c[1] == "_main"), ["helix", "lsfg", "optiscaler"])
+        self.assertEqual(sorted(c[0] for c in self.calls if c[1] == "_main"), sorted(host.SUBS))
         self.assertFalse(self.plugin.suite.sync_task.done())
         support.run(self.plugin._unload())
         support.run(support.asyncio.sleep(0))
         self.assertTrue(self.plugin.suite.sync_task.cancelled() or self.plugin.suite.sync_task.done())
-        self.assertEqual(len([c for c in self.calls if c[1] == "_unload"]), 3)
+        self.assertEqual(len([c for c in self.calls if c[1] == "_unload"]), len(host.SUBS))
 
     def test_one_failing_upstream_hook_does_not_stop_the_others(self):
         async def boom():
@@ -48,12 +48,12 @@ class Hooks(unittest.TestCase):
         self.plugin.suite.subs["lsfg"].instance._main = boom
         support.run(self.plugin._main())
         support.run(self.plugin._unload())
-        self.assertEqual(sorted(c[0] for c in self.calls if c[1] == "_main"), ["helix", "optiscaler"])
+        self.assertEqual(sorted(c[0] for c in self.calls if c[1] == "_main"), sorted(set(host.SUBS) - {"lsfg"}))
 
     def test_removing_the_plugin_runs_the_uninstall_hooks_and_drops_the_bridge_file(self):
         bridge.write(self.env.home, "1", "generic", {})
         support.run(self.plugin._uninstall())
-        self.assertEqual(len([c for c in self.calls if c[1] == "_uninstall"]), 3)
+        self.assertEqual(len([c for c in self.calls if c[1] == "_uninstall"]), len(host.SUBS))
         self.assertFalse(os.path.exists(bridge.path(self.env.home)))
 
     def test_an_update_from_the_panel_undoes_nothing(self):

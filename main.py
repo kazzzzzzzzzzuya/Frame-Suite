@@ -102,5 +102,14 @@ class Plugin:
     async def suite_set_toolbox_fg(self, on):
         return await self.suite.set_toolbox_allowed(bool(on))
 
+    async def suite_mako_launch_plan(self):
+        return await self.suite.mako_launch_plan()
+
+    async def suite_mako_launch_fix(self, appid, launch_options):
+        return await self.suite.mako_launch_fix(appid, launch_options)
+
+    async def suite_mako_launch_mark(self, appid, added):
+        return self.suite.mako_launch_mark(appid, added)
+
     async def suite_updates(self, force=False):
         return await self.suite.updates(force)

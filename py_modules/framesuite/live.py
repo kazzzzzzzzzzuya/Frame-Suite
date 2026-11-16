@@ -53,7 +53,7 @@ def check(app_id, target_dir=None, proxy_dll=None, proc="/proc", uid=None):
     """``running`` False means the game is not running (nothing to say)."""
     pids = game_pids(app_id, proc, uid)
     res = {"running": bool(pids), "readable": False, "optiscaler": False, "fsr4": False,
-           "helix": False, "lsfg": False}
+           "helix": False, "lsfg": False, "mako": False}
     if not pids:
         return res
     files = set()
@@ -74,4 +74,6 @@ def check(app_id, target_dir=None, proxy_dll=None, proc="/proc", uid=None):
             res["helix"] = True
         if "lsfg" in base and base.endswith((".so", ".dll")) or "lsfg-vk" in base:
             res["lsfg"] = True
+        if base.startswith("libmako-render"):
+            res["mako"] = True
     return res

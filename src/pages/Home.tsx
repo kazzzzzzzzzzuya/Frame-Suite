@@ -7,10 +7,16 @@ import {
 } from "../backend";
 import { nav } from "../nav";
 import { readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
-import { AMBER, confirm, GREEN, Note, RED, toast, when } from "../ui";
+import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
+import { confirm, Header, InfoBox, Tile, Tiles, toast, when } from "../ui";
 
 const LAST_KEY = "frame-suite:last-game";
-const ROUTE_NAME: Record<string, string> = { optiscaler: "OptiScaler (FSR 4 in the game)", lsfg: "lsfg-vk frame generation" };
+const ROUTE_NAME: Record<string, string> = {
+  optiscaler: "OptiScaler (FSR 4 in the game)",
+  lsfg: "lsfg-vk frame generation",
+  mako: "MAKO adaptive frame generation",
+};
+const ROUTE_SHORT: Record<string, string> = { optiscaler: "OptiScaler", lsfg: "lsfg-vk", mako: "MAKO" };
 
 interface Game { appid: string; name: string; boost?: boolean }
 
@@ -106,8 +112,8 @@ export function Home({ info }: { info: Info }) {
     try {
       const read = await launchOptions(appid);
       // Only OptiScaler needs the launch options; lsfg-vk works without them.
-      const needed = title !== "Boost" || view?.boost.route === "optiscaler" ||
-        (!view?.boost.on && view?.plan.route === "optiscaler");
+      const needs = (r?: string | null) => r === "optiscaler" || r === "mako";
+      const needed = title !== "Boost" || needs(view?.boost.route) || (!view?.boost.on && needs(view?.plan.route));
       if (read === null && needed) {
         toast(title, "Steam did not hand out this game's launch options, so nothing was changed. Try again in a moment.");
         return;
@@ -174,7 +180,7 @@ export function Home({ info }: { info: Info }) {
       if (!id || !v || v.appid !== id || busyRef.current) return;
       const l = await getLive(id).catch(() => null);
       if (!l || current.current !== id) return;
-      const keys: (keyof typeof l)[] = ["running", "readable", "optiscaler", "fsr4", "helix", "lsfg"];
+      const keys: (keyof typeof l)[] = ["running", "readable", "optiscaler", "fsr4", "helix", "lsfg", "mako"];
       if (keys.some((k) => l[k] !== v.live[k])) void refresh(id);
     }, 3000);
     return () => clearInterval(timer);
@@ -205,70 +211,96 @@ export function Home({ info }: { info: Info }) {
   // Controls are not disabled while a change runs: disabling the focused one makes Steam jump to the
   // top of the panel. The handlers ignore input meanwhile.
   const locked = on;
+  const sub = (id: string) => info.subs.find((s) => s.id === id);
+  const mk = view?.mako.profile ?? null;
+  const preset = profile?.presets.find((p) => p.id === view?.options.preset);
+  const tiles: Tile[] = [
+    { id: "mako", icon: <FaForward />, label: "MAKO", onClick: () => nav.go("mako"), disabled: !sub("mako")?.ok },
+    { id: "lsfg", icon: <FaClone />, label: "LSFG-VK", onClick: () => nav.go("lsfg"), disabled: !sub("lsfg")?.ok },
+    { id: "optiscaler", icon: <FaExpandArrowsAlt />, label: "Framegen", onClick: () => nav.go("optiscaler"), disabled: !sub("optiscaler")?.ok },
+    { id: "helix", icon: <FaDna />, label: "HelixSR", onClick: () => nav.go("helix"), disabled: !sub("helix")?.ok },
+    { id: "setup", icon: <FaTools />, label: "Setup", onClick: () => nav.go("setup") },
+    { id: "versions", icon: <FaMicrochip />, label: "Chip & versions", onClick: () => nav.go("versions") },
+  ];
 
   return (
     <>
-      <PanelSection title="Game">
+      <PanelSection>
         <PanelSectionRow>
           <DropdownItem
+            label="Game"
             rgOptions={gameOptions}
             selectedOption={appid}
             strDefaultLabel={games.length ? "Choose a game" : "No installed games found"}
             onChange={(o) => !busy && setAppid(String(o.data))}
           />
         </PanelSectionRow>
+        {error && <InfoBox tone="error">{error}</InfoBox>}
+
+        {view && (
+          <div className="fs-card">
+            <PanelSectionRow>
+              <ToggleField
+                label={`Boost ${view.name}`}
+                description={`${profile?.label ?? info.profile} → ${ROUTE_NAME[route ?? "lsfg"]}`}
+                checked={on}
+                disabled={!on && blockers.length > 0}
+                onChange={(v) =>
+                  v
+                    ? change("Boost", (lo) => boostOn(view.appid, view.name, lo, false), true)
+                    : change("Boost", (lo) => boostOff(view.appid, lo))
+                }
+              />
+            </PanelSectionRow>
+            {!on && <InfoBox>{view.plan.reason}</InfoBox>}
+            {!on && blockers.map((b) => (
+              <InfoBox key={b.id} tone="warn">{b.text}</InfoBox>
+            ))}
+            {!on && blockers.some((b) => b.id.startsWith("setup-")) && (
+              <PanelSectionRow>
+                <ButtonItem layout="below" onClick={() => nav.go("setup")}>Open Setup</ButtonItem>
+              </PanelSectionRow>
+            )}
+            <InfoBox tone={view.summary.active.length ? "good" : "info"}>
+              {view.summary.active.length ? `In this game: ${view.summary.active.join(" · ")}` : "Nothing from the four plugins is in this game."}
+              {"\n"}
+              {view.summary.live}
+            </InfoBox>
+          </div>
+        )}
       </PanelSection>
 
-      {error && <PanelSection><Note color={RED}>{error}</Note></PanelSection>}
+      <PanelSection>
+        <Tiles tiles={tiles} />
+      </PanelSection>
 
-      {view && (
-        <PanelSection title={view.name}>
-          <PanelSectionRow>
-            <ToggleField
-              label="Boost this game"
-              description={`${profile?.label ?? info.profile} → ${ROUTE_NAME[route ?? "lsfg"]}`}
-              checked={on}
-              disabled={!on && blockers.length > 0}
-              onChange={(v) =>
-                v
-                  ? change("Boost", (lo) => boostOn(view.appid, view.name, lo, false), true)
-                  : change("Boost", (lo) => boostOff(view.appid, lo))
-              }
-            />
-          </PanelSectionRow>
-          {!on && <Note>{view.plan.reason}</Note>}
-          {!on && blockers.map((b) => (
-            <Note key={b.id} color={AMBER}>{b.text}</Note>
-          ))}
-          {!on && blockers.some((b) => b.id.startsWith("setup-")) && (
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={() => nav.go("setup")}>Open Setup</ButtonItem>
-            </PanelSectionRow>
-          )}
-          <Note color={view.summary.active.length ? GREEN : undefined}>
-            {view.summary.active.length ? `In this game: ${view.summary.active.join(" · ")}` : "Nothing from the three plugins is in this game."}
-            {"\n"}
-            {view.summary.live}
-          </Note>
+      {view && (view.toolbox || view.conflicts.length > 0 || (on && (route === "optiscaler" || route === "mako"))) && (
+        <PanelSection>
           {view.toolbox && (
-            <Note color={view.toolbox.refused ? AMBER : undefined}>
+            <InfoBox tone={view.toolbox.refused ? "warn" : "info"}>
               {view.toolbox.refused
                 ? `Legion Go Toolbox battery goal: frame generation not available – ${view.toolbox.refused}`
                 : view.toolbox.applied
                   ? `Legion Go Toolbox battery goal: lsfg-vk ${view.toolbox.applied}× is on to save battery.`
                   : `Legion Go Toolbox battery goal: lsfg-vk is ready for this game${view.toolbox.created ? " (off until the battery needs it)" : ""}.`}
-            </Note>
+            </InfoBox>
           )}
           {on && route === "optiscaler" && (
-            <Note>
+            <InfoBox>
               In the game's graphics settings choose DLSS (or FSR / XeSS if it has no DLSS). OptiScaler's own menu
               opens with the key shown under Settings below: bind that key to a back button in the game's controller
               layout.
-            </Note>
+            </InfoBox>
+          )}
+          {on && route === "mako" && (
+            <InfoBox>
+              MAKO starts with the game's next start (its launcher is in the launch options now). Every other setting
+              (scaling, shaders, HDR, fixed frames) is on the MAKO page.
+            </InfoBox>
           )}
           {view.conflicts.map((c) => (
             <div key={c.id}>
-              <Note color={c.level === "error" ? RED : AMBER}>{c.text}</Note>
+              <InfoBox tone={c.level === "error" ? "error" : "warn"}>{c.text}</InfoBox>
               {c.fix && (
                 <PanelSectionRow>
                   <ButtonItem layout="below" onClick={() => change("Fix", (lo) => applyFix(view.appid, c.fix!, lo))}>
@@ -282,14 +314,16 @@ export function Home({ info }: { info: Info }) {
       )}
 
       {view && (
-        <PanelSection title="Settings for this game">
+        <PanelSection>
+          <Header>Settings for this game</Header>
           <PanelSectionRow>
             <DropdownItem
               label="Method"
               description={locked && on ? "Switch Boost off to change this." : undefined}
               disabled={locked}
               rgOptions={[
-                { data: "auto", label: `Automatic (${view.plan.route === "optiscaler" ? "OptiScaler" : "lsfg-vk"})` },
+                { data: "auto", label: `Automatic (${ROUTE_SHORT[view.plan.route]})` },
+                { data: "mako", label: "MAKO: adaptive frame generation" },
                 { data: "optiscaler", label: "OptiScaler: FSR 4 / HelixSR in the game" },
                 { data: "lsfg", label: "lsfg-vk: frame generation for any game" },
               ]}
@@ -297,7 +331,53 @@ export function Home({ info }: { info: Info }) {
               onChange={(o) => option("route", o.data)}
             />
           </PanelSectionRow>
-          {route === "lsfg" ? (
+          {route === "mako" ? (
+            <>
+              <PanelSectionRow>
+                <DropdownItem
+                  label="Frame rate on screen"
+                  description="MAKO generates just as many frames as needed to hold this. Pick one the screen divides evenly (72 or 144 on the Legion Go, 60 at 60 Hz)."
+                  rgOptions={[
+                    { data: 0, label: `From the preset (${preset?.mako?.target_fps ?? 60} fps)` },
+                    ...[30, 36, 40, 45, 48, 60, 72, 90, 120, 144].map((f) => ({ data: f, label: `${f} fps` })),
+                  ]}
+                  selectedOption={view.options.mako_target ?? 0}
+                  onChange={(o) => option("mako_target", o.data || null)}
+                />
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <DropdownItem
+                  label="Most generated frames"
+                  description="2× keeps at least half the frames real: the least delay and fewest artifacts. 3× and 4× reach the target from fewer real frames."
+                  rgOptions={[
+                    { data: 0, label: `From the preset (${preset?.mako?.max_multiplier ?? 2}×)` },
+                    { data: 2, label: "2×" },
+                    { data: 3, label: "3×" },
+                    { data: 4, label: "4×" },
+                  ]}
+                  selectedOption={view.options.mako_max ?? 0}
+                  onChange={(o) => option("mako_max", o.data || null)}
+                />
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <DropdownItem
+                  label="Preset"
+                  description="Battery also turns on MAKO's Ultra Performance (lighter, slightly softer)."
+                  rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
+                  selectedOption={view.options.preset}
+                  onChange={(o) => option("preset", o.data)}
+                />
+              </PanelSectionRow>
+              {mk && (
+                <InfoBox tone="info">
+                  {`MAKO's profile "${mk.profile}": ${
+                    !mk.frame_generation_enabled ? "frame generation off" :
+                      mk.adaptive ? `adaptive, ${mk.target_fps} fps on screen, up to ${mk.adaptive_max_multiplier}×` : `fixed ${mk.multiplier}×`
+                  }.${on && view.boost.applied.mako_created === false ? " It was there before, so it was kept: change it on the MAKO page." : ""}`}
+                </InfoBox>
+              )}
+            </>
+          ) : route === "lsfg" ? (
             <>
               <PanelSectionRow>
                 <DropdownItem
@@ -322,7 +402,7 @@ export function Home({ info }: { info: Info }) {
                 />
               </PanelSectionRow>
               {on && view.boost.applied.lsfg === "kept" && (
-                <Note>This game already had an lsfg-vk profile, so it was kept. Change it on the LSFG-VK page.</Note>
+                <InfoBox tone="info">This game already had an lsfg-vk profile, so it was kept. Change it on the LSFG-VK page.</InfoBox>
               )}
             </>
           ) : (
@@ -383,7 +463,8 @@ export function Home({ info }: { info: Info }) {
       )}
 
       {view && (
-        <PanelSection title="Measure">
+        <PanelSection>
+          <Header>Measure</Header>
           {measure.state === "running" && measure.appid === view.appid ? (
             <PanelSectionRow>
               <ProgressBarWithInfo nProgress={(measure.progress ?? 0) * 100} sOperationText={measure.note || "Measuring the frame rate…"} />
@@ -405,11 +486,11 @@ export function Home({ info }: { info: Info }) {
             </PanelSectionRow>
           )}
           {view.measure.map((m) => (
-            <Note key={m.time}>
-              <span style={{ color: "#fff" }}>{m.fps} fps</span>
+            <InfoBox key={m.time} tone="info">
+              <span style={{ color: "#fff", fontWeight: 700 }}>{m.fps} fps</span>
               {m.low ? ` · slowest frames ${m.low} fps` : ""}
               {`\n${m.label}\n${when(m.time)}`}
-            </Note>
+            </InfoBox>
           ))}
           {view.measure.length > 0 && (
             <PanelSectionRow>
@@ -419,35 +500,20 @@ export function Home({ info }: { info: Info }) {
             </PanelSectionRow>
           )}
           {view.measure.length === 0 && (
-            <Note>Measure once with each setup (same scene) to see which is fastest on this device. The number counts frames on screen, generated ones included.</Note>
+            <InfoBox>Measure once with each setup (same scene) to see which is fastest on this device. The number counts frames on screen, generated ones included.</InfoBox>
           )}
         </PanelSection>
       )}
 
-      <PanelSection title="The three plugins">
-        {info.subs.map((s) => (
-          <PanelSectionRow key={s.id}>
-            <ButtonItem layout="below" description={s.ok ? `Version ${s.version}` : "Did not load in this build"} onClick={() => nav.go(s.id as "lsfg")}>
-              {s.title}
-            </ButtonItem>
-          </PanelSectionRow>
-        ))}
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => nav.go("setup")}>Setup</ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => nav.go("versions")}>Chip, versions and updates</ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
-
       {view && (
-        <PanelSection title="Clean up">
+        <PanelSection>
+          <Header>Clean up</Header>
           <PanelSectionRow>
             <ButtonItem
               layout="below"
-              description="Removes OptiScaler, HelixSR and the lsfg-vk profile from this game and restores its original files."
+              description="Removes OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile from this game and restores its original files."
               onClick={async () => {
-                if (await confirm("Remove everything from this game?", `OptiScaler, HelixSR and the lsfg-vk profile are taken out of ${view.name}, whichever plugin put them there. The game must be closed.`, "Remove"))
+                if (await confirm("Remove everything from this game?", `OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile are taken out of ${view.name}, whichever plugin put them there. The game must be closed.`, "Remove"))
                   change("Clean up", (lo) => removeAll(view.appid, lo));
               }}
             >

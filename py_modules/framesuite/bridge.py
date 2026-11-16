@@ -32,6 +32,11 @@ toolbox switch frame generation). Per game, "toolbox" answers its requests
 (see toolbox.py): {"standby", "since" (when the lsfg-vk profile was made; 0:
 it was there before), "multiplier" (switched on now, or null), "refused"}.
 
+Per game, "mako" mirrors a MAKO profile ({"profile", "enabled", "adaptive",
+"target_fps", "max_multiplier", "multiplier", "base_fps_cap"}); with MAKO's
+frame generation on, "frame_generation" says so: {"source": "mako",
+"multiplier", "adaptive", "target_fps"}.
+
 Only games Frame Suite manages or was told about are listed. A reader should
 ignore a file whose ``version`` it does not know.
 """
@@ -89,3 +94,27 @@ def read(home):
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) and data.get("version") == VERSION else None
+
+
+def mako_entry(mk):
+    """A MAKO profile as the bridge shows it."""
+    return {
+        "profile": mk.get("profile"),
+        "enabled": bool(mk.get("frame_generation_enabled")) and not mk.get("disable_mako"),
+        "adaptive": bool(mk.get("adaptive")),
+        "target_fps": int(mk.get("target_fps") or 0),
+        "max_multiplier": int(mk.get("adaptive_max_multiplier") or 0),
+        "multiplier": int(mk.get("multiplier") or 1),
+        "base_fps_cap": int(mk.get("base_fps_cap") or 0),
+    }
+
+
+def mako_frame_generation(mk):
+    """Frame generation by MAKO. Adaptive: the screen holds "target_fps", the game makes at least
+    target / "multiplier" (the most MAKO multiplies). Fixed: "multiplier" times the game's frames."""
+    e = mako_entry(mk)
+    if e["adaptive"]:
+        return {"source": "mako", "multiplier": max(1, e["max_multiplier"]), "in_game": False,
+                "adaptive": True, "target_fps": e["target_fps"]}
+    return {"source": "mako", "multiplier": max(1, e["multiplier"]), "in_game": False, "adaptive": False,
+            "target_fps": 0}

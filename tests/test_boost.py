@@ -184,6 +184,138 @@ class Lsfg(Base):
         self.assertIn('"2000"', open(self.conf).read())
 
 
+@unittest.skipUnless(support.have_upstreams() or support.REQUIRE, "upstream plugins are not checked out")
+class Mako(Base):
+    """MAKO's real backend: its renderer installed into the test home, a stand-in running game."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil as _sh
+        cls.sleep = _sh.which("sleep")
+
+    def setUp(self):
+        super().setUp()
+        self.suite = self.env.suite(proc="/proc")      # the stand-in game is a real process
+        self.setup_step("mako")
+        self.games = []
+        self.addCleanup(self.stop_games)
+
+    def stop_games(self):
+        for p in self.games:
+            p.kill()
+            p.wait()
+
+    def start_game(self, appid, exe="OldGame"):
+        import shutil as _sh
+        import subprocess
+        path = os.path.join(self.env.tmp, exe)
+        _sh.copy(self.sleep, path)
+        p = subprocess.Popen([path, "300"], env={"SteamAppId": appid, "SteamGameId": appid})
+        self.games.append(p)
+        time.sleep(0.3)
+        return p
+
+    def wrapper(self):
+        return os.path.join(self.env.home, ".local", "bin", "mako-run")
+
+    def test_setup_installs_the_renderer(self):
+        st = self.go(self.suite.setup())
+        self.assertTrue(st["mako"]["installed"])
+        self.assertEqual(st["mako"]["wrapper"], self.wrapper())
+
+    def test_mako_is_the_frame_generation_for_games_without_upscalers(self):
+        view = self.go(self.suite.game("2000"))
+        self.assertEqual(view["plan"]["route"], "mako")
+        self.assertEqual([b["id"] for b in view["plan"]["blockers"]], ["start-game"])
+        self.assertEqual(self.go(self.suite.game("1000"))["plan"]["route"], "optiscaler")   # DLSS: OptiScaler first
+
+    def test_boost_sets_up_adaptive_frame_generation_and_off_takes_it_back(self):
+        self.suite.detected = "z1-extreme"
+        self.start_game("2000")
+        res = self.go(self.suite.boost_on("2000", "Old Game", SMOOTH, False))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["route"], "mako")
+        lo = res["launch_options"]
+        toks = launchopts.split_tokens(lo)
+        self.assertEqual(toks[toks.index("%command%") - 1], self.wrapper())       # right before %command%
+        self.assertTrue(lo.startswith("MANGOHUD_CONFIGFILE="))                    # the Toolbox's cap stays first
+        prof = self.go(self.suite.ad.mako_game("2000"))
+        self.assertEqual((prof["frame_generation_enabled"], prof["adaptive"], prof["target_fps"],
+                          prof["adaptive_max_multiplier"]), (True, True, 72, 2))
+        b = bridge.read(self.env.home)["games"]["2000"]
+        self.assertEqual(b["route"], "mako")
+        self.assertEqual(b["frame_generation"], {"source": "mako", "multiplier": 2, "in_game": False,
+                                                 "adaptive": True, "target_fps": 72})
+        self.assertTrue(b["mako"]["enabled"])
+        self.assertIn("MAKO adaptive 72 fps, up to 2×", res["view"]["summary"]["active"])
+        # The game's own choice of target, applied to MAKO's profile at once
+        self.go(self.suite.set_option("2000", "mako_target", 60, lo))
+        self.assertEqual(self.go(self.suite.ad.mako_game("2000"))["target_fps"], 60)
+        self.assertEqual(bridge.read(self.env.home)["games"]["2000"]["frame_generation"]["target_fps"], 60)
+        res = self.go(self.suite.boost_off("2000", lo))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["launch_options"], SMOOTH)
+        self.assertIsNone(self.go(self.suite.ad.mako_game("2000")))
+        self.assertNotIn("2000", bridge.read(self.env.home)["games"])
+
+    def test_a_profile_made_on_makos_own_page_gets_its_launcher_automatically(self):
+        calls = self.suite.exported()
+        self.start_game("2000")
+        r = self.go(calls["mako__capture_game_profile"]("2000", "Old Game"))
+        self.assertTrue(r["success"], r)
+        plan = self.go(self.suite.mako_launch_plan())
+        self.assertEqual((plan["wrapper"], plan["want"]), (self.wrapper(), ["2000"]))
+        fix = self.go(self.suite.mako_launch_fix("2000", "gamemoderun %command% -dx12"))
+        self.assertEqual(fix["launch_options"], "gamemoderun %s %%command%% -dx12" % self.wrapper())
+        self.assertTrue(fix["changed"] and fix["ours"])
+        self.suite.mako_launch_mark("2000", True)
+        # Already there: nothing to do
+        self.assertFalse(self.go(self.suite.mako_launch_fix("2000", fix["launch_options"]))["changed"])
+        self.assertIn("2000", bridge.read(self.env.home)["games"])
+        # Profile deleted on MAKO's page: the launcher Frame Suite added goes again
+        self.go(calls["mako__delete_profile"](r["profile_name"]))
+        fix = self.go(self.suite.mako_launch_fix("2000", fix["launch_options"]))
+        self.assertEqual(fix["launch_options"], "gamemoderun %command% -dx12")
+        self.assertFalse(fix["ours"])
+        self.suite.mako_launch_mark("2000", False)
+        self.assertNotIn("2000", bridge.read(self.env.home)["games"])
+
+    def test_a_launcher_the_user_added_is_never_taken_out(self):
+        lo = "%s %%command%%" % self.wrapper()
+        fix = self.go(self.suite.mako_launch_fix("2000", lo))
+        self.assertFalse(fix["changed"])
+        self.assertEqual(fix["launch_options"], lo)
+
+    def test_without_the_renderer_the_launcher_comes_out_before_a_game_could_fail(self):
+        self.start_game("2000")
+        self.go(self.suite.boost_on("2000", "Old Game", "", False))
+        self.go(self.suite.exported()["mako__uninstall_mako"]())
+        self.suite._mako_state_at = 0.0
+        plan = self.go(self.suite.mako_launch_plan())
+        self.assertEqual(plan["want"], [])
+        fix = self.go(self.suite.mako_launch_fix("2000", "%s %%command%%" % self.wrapper()))
+        self.assertEqual((fix["launch_options"], fix["changed"]), ("", True))
+
+    def test_remove_everything_takes_mako_out_too(self):
+        self.start_game("2000")
+        res = self.go(self.suite.boost_on("2000", "Old Game", "", False))
+        self.stop_games()                                  # files are only changed with the game closed
+        self.games = []
+        res = self.go(self.suite.remove_all("2000", res["launch_options"]))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["launch_options"], "")
+        self.assertIsNone(self.go(self.suite.ad.mako_game("2000")))
+
+    @unittest.skipUnless(support.have_binaries() or support.REQUIRE, "needs lsfg-vk from the built plugin")
+    def test_mako_and_lsfg_vk_on_one_game_is_pointed_out(self):
+        self.setup_step("lsfg")
+        self.start_game("2000")
+        self.go(self.suite.boost_on("2000", "Old Game", "", False))
+        self.go(self.suite.ad.lsfg_set("2000", "Old Game", {"multiplier": 2}))
+        ids = [c["id"] for c in self.go(self.suite.game("2000", None))["conflicts"]]
+        self.assertIn("double-fg-mako", ids)
+
+
 @unittest.skipUnless((support.have_upstreams() and support.have_binaries()) or support.REQUIRE,
                      "needs the built plugin with its binaries (run the build)")
 class ToolboxRequests(Base):

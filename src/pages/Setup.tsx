@@ -2,9 +2,9 @@ import { ButtonItem, PanelSection, PanelSectionRow, ProgressBarWithInfo } from "
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSetup, Info, runSetup, SetupState } from "../backend";
 import { nav } from "../nav";
-import { AMBER, confirm, GREEN, Note, RED, toast } from "../ui";
+import { confirm, Header, InfoBox, toast } from "../ui";
 
-type Step = "lsfg" | "optiscaler" | "helix";
+type Step = "mako" | "lsfg" | "optiscaler" | "helix";
 const ACTIVE = ["starting", "installing", "looking", "downloading", "building"];
 const HELIX_TEXT =
   "HelixSR's newest stable release is downloaded from its GitHub page and built on this device by HelixSR's own setup. " +
@@ -43,21 +43,23 @@ export function Setup({ info }: { info: Info }) {
     return () => clearInterval(t);
   }, [load, start]);
 
-  if (!state) return <PanelSection><Note>Checking what is installed…</Note></PanelSection>;
+  if (!state) return <PanelSection><InfoBox tone="info">Checking what is installed…</InfoBox></PanelSection>;
 
   const w = state.wizard;
   const running = ACTIVE.includes(w.phase);
   const done: Record<Step, boolean> = {
+    mako: state.mako.installed,
     lsfg: state.lsfg.installed,
     optiscaler: state.optiscaler.installed,
     helix: state.helix.built,
   };
   const available: Record<Step, boolean> = {
+    mako: state.mako.available,
     lsfg: state.lsfg.available,
     optiscaler: state.optiscaler.available,
     helix: state.helix.available,
   };
-  const missing = (["lsfg", "optiscaler", "helix"] as Step[]).filter((s) => available[s] && !done[s]);
+  const missing = (["mako", "lsfg", "optiscaler", "helix"] as Step[]).filter((s) => available[s] && !done[s]);
 
   const go = async (steps: Step[]) => {
     if (steps.includes("helix") && !(await confirm("Download and build HelixSR?", HELIX_TEXT, "Download and build"))) {
@@ -84,12 +86,13 @@ export function Setup({ info }: { info: Info }) {
   };
 
   const row = (step: Step, title: string, what: string, extra?: string) => (
-    <PanelSection title={title}>
-      <Note color={done[step] ? GREEN : available[step] ? undefined : AMBER}>
-        {!available[step] ? "This part did not load in this build (see Chip, versions and updates)." : done[step] ? `✓ Ready. ${extra ?? ""}` : what}
-      </Note>
+    <PanelSection>
+      <Header>{title}</Header>
+      <InfoBox tone={done[step] ? "good" : available[step] ? "info" : "warn"}>
+        {!available[step] ? "This part did not load in this build (see Chip, versions and updates)." : done[step] ? `Ready. ${extra ?? ""}` : what}
+      </InfoBox>
       {progress(step)}
-      {w.step === step && w.phase === "failed" && <Note color={RED}>{w.error}</Note>}
+      {w.step === step && w.phase === "failed" && <InfoBox tone="error">{w.error}</InfoBox>}
       {available[step] && (!done[step] || step === "optiscaler") && !running && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => go([step])}>
@@ -103,9 +106,9 @@ export function Setup({ info }: { info: Info }) {
   return (
     <>
       <PanelSection>
-        <Note>
+        <InfoBox>
           One-time preparation. Nothing here touches a game: that happens per game with Boost on the first page.
-        </Note>
+        </InfoBox>
         {missing.length > 1 && !running && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={() => go(missing)}>Set up everything that is missing</ButtonItem>
@@ -113,8 +116,14 @@ export function Setup({ info }: { info: Info }) {
         )}
       </PanelSection>
       {row(
+        "mako",
+        "1 · MAKO",
+        "Installs MAKO's renderer: adaptive frame generation for any game, with its own model (no Lossless Scaling needed).",
+        state.mako.version ? `MAKO Renderer ${state.mako.version}.` : "",
+      )}
+      {row(
         "lsfg",
-        "1 · lsfg-vk",
+        "2 · lsfg-vk",
         "Installs the lsfg-vk layer for frame generation in any game.",
         state.lsfg.lossless
           ? "Lossless Scaling was found."
@@ -122,11 +131,11 @@ export function Setup({ info }: { info: Info }) {
       )}
       {row(
         "optiscaler",
-        "2 · OptiScaler",
+        "3 · OptiScaler",
         `Unpacks OptiScaler and its FSR 4 runtimes into ~/fgmod${variant ? `, with "${variant}" as the default` : ""}.`,
         variant ? `Default FSR 4 runtime: ${variant}.` : "",
       )}
-      {row("helix", "3 · HelixSR (optional)", "A second upscaler next to FSR 4, to compare on your own device.", state.helix.active ? `HelixSR ${state.helix.active}.` : "")}
+      {row("helix", "4 · HelixSR (optional)", "A second upscaler next to FSR 4, to compare on your own device.", state.helix.active ? `HelixSR ${state.helix.active}.` : "")}
       <PanelSection>
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => nav.go("home")}>Back to the games</ButtonItem>

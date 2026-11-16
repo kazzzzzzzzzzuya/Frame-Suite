@@ -42,7 +42,22 @@ REQUIRED = {
         "set_active": ["tag"],
         "start_setup": ["tag"],
     },
+    "mako": {
+        "check_mako_installed": [],
+        "install_mako": [],
+        "get_profiles": [],
+        "get_profile_config": ["profile_name"],
+        "capture_game_profile": ["app_id", "display_name"],
+        "update_profile_config_fields": ["profile_name", "changes"],
+        "delete_profile": ["profile_name"],
+        "get_launch_option": [],
+    },
 }
+
+# MAKO profile fields Frame Suite reads and sets (MAKO's own names).
+MAKO_FIELDS = ("frame_generation_enabled", "adaptive", "target_fps", "adaptive_max_multiplier", "multiplier",
+               "ultra_performance", "disable_mako", "base_fps_cap", "scaling_enabled")
+MAKO_RUN = "mako-run"
 
 LSFG_WORKAROUNDS = os.path.join(".config", "lsfg-vk", "workarounds.json")
 TOOLBOX_SMOOTH = os.path.join(".config", "lgo-toolbox", "smooth")
@@ -179,6 +194,55 @@ class Adapters(object):
     def toolbox_cap(self, appid):
         """Whether the Legion Go Toolbox's Smooth mode holds a cap for this game."""
         return os.path.isfile(os.path.join(self.home, TOOLBOX_SMOOTH, "%s.conf" % appid))
+
+    # --- MAKO ------------------------------------------------------------------------------
+
+    async def mako_state(self):
+        if not self.has("mako"):
+            return {"available": False, "installed": False, "wrapper": None}
+        res = await self.call("mako", "check_mako_installed")
+        installed = bool((res or {}).get("installed"))
+        return {"available": True, "installed": installed,
+                "wrapper": (res or {}).get("script_path") if installed else None,
+                "version": (res or {}).get("installed_engine_version")}
+
+    async def mako_profiles(self):
+        """{appid: profile name} for every MAKO profile made for a game."""
+        if not self.has("mako"):
+            return {}
+        res = await self.call("mako", "get_profiles")
+        out = {}
+        for d in (res or {}).get("profile_details") or []:
+            app = str(d.get("steam_app_id") or "")
+            if d.get("kind") == "game" and app.isdigit() and d.get("profile_name"):
+                out[app] = d["profile_name"]
+        return out
+
+    async def mako_config(self, profile):
+        res = await self.call("mako", "get_profile_config", profile)
+        cfg = (res or {}).get("config") if (res or {}).get("success") else None
+        return {k: cfg.get(k) for k in MAKO_FIELDS} if isinstance(cfg, dict) else None
+
+    async def mako_game(self, appid):
+        """The MAKO profile of one game: {"profile", **fields}, or None."""
+        profile = (await self.mako_profiles()).get(str(appid))
+        if not profile:
+            return None
+        cfg = await self.mako_config(profile)
+        return dict(cfg or {}, profile=profile)
+
+    async def mako_capture(self, appid, name):
+        res = await self.call("mako", "capture_game_profile", str(appid), name)
+        return {"ok": bool((res or {}).get("success")), "profile": (res or {}).get("profile_name"),
+                "message": (res or {}).get("error") or (res or {}).get("message") or ""}
+
+    async def mako_set(self, profile, changes):
+        res = await self.call("mako", "update_profile_config_fields", profile, dict(changes))
+        return {"ok": bool((res or {}).get("success")), "message": (res or {}).get("error") or ""}
+
+    async def mako_delete(self, profile):
+        res = await self.call("mako", "delete_profile", profile)
+        return {"ok": bool((res or {}).get("success")), "message": (res or {}).get("error") or ""}
 
     # --- HelixSR -----------------------------------------------------------------------
 

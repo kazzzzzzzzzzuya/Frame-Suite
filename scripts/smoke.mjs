@@ -54,11 +54,11 @@ if (!events.includes("helix__setup_done")) fail(`HelixSR's event is not prefixed
 
 // Every backend call is declared when its module loads: these are the names that reach Decky.
 const count = (prefix) => declared.filter((n) => n.startsWith(prefix)).length;
-const stray = declared.filter((n) => !/^(suite_|lsfg__|optiscaler__|helix__)/.test(n));
+const stray = declared.filter((n) => !/^(suite_|lsfg__|optiscaler__|helix__|mako__)/.test(n));
 if (stray.length) fail(`backend calls without a prefix: ${stray.slice(0, 5).join(", ")}`);
-for (const [prefix, least] of [["suite_", 10], ["lsfg__", 10], ["optiscaler__", 5], ["helix__", 10]]) {
+for (const [prefix, least] of [["suite_", 10], ["lsfg__", 10], ["optiscaler__", 5], ["helix__", 10], ["mako__", 20]]) {
   if (count(prefix) < least) fail(`only ${count(prefix)} "${prefix}" backend calls declared`);
 }
 plugin.onDismount?.();
 if (process.argv[3]) (await import("node:fs")).writeFileSync(process.argv[3], JSON.stringify([...new Set(declared)].sort(), null, 1));
-console.log(`smoke test ok: 1 connection; backend calls suite ${count("suite_")}, lsfg ${count("lsfg__")}, optiscaler ${count("optiscaler__")}, helix ${count("helix__")}; events ${events.join(", ")}`);
+console.log(`smoke test ok: 1 connection; backend calls suite ${count("suite_")}, lsfg ${count("lsfg__")}, optiscaler ${count("optiscaler__")}, helix ${count("helix__")}, mako ${count("mako__")}; events ${events.join(", ")}`);
