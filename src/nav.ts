@@ -3,7 +3,26 @@
 import { useEffect, useState } from "react";
 
 export type SubId = "lsfg" | "optiscaler" | "helix" | "mako";
-export type Page = "home" | "setup" | "versions" | SubId;
+export type Page = "home" | "setup" | "versions" | "guide" | SubId;
+
+// Whether Getting started was shown once. Kept in the browser's storage, like R1's choice.
+const GUIDE_KEY = "frame-suite:guide-seen";
+export const guideSeen = {
+  get(): boolean {
+    try {
+      return window.localStorage.getItem(GUIDE_KEY) === "1";
+    } catch {
+      return true; // no storage: do not push the guide every time
+    }
+  },
+  mark() {
+    try {
+      window.localStorage.setItem(GUIDE_KEY, "1");
+    } catch {
+      /* no storage */
+    }
+  },
+};
 
 let page: Page = "home";
 const listeners = new Set<() => void>();
