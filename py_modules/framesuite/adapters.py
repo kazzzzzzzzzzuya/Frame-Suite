@@ -264,7 +264,8 @@ class Adapters(object):
         optis = [{"dir": o.get("dir"), "kind": o.get("installed_kind"), "configured": bool(o.get("configured")),
                   "disabled": bool(o.get("disabled")), "dx11": bool(o.get("dx11")),
                   "upscaler": o.get("upscaler"), "version": o.get("helix_version"),
-                  "check": o.get("check")} for o in g.get("optiscaler") or []]
+                  "check": o.get("check"), "scaler_version": o.get("scaler_version"),
+                  "scaler_launch": o.get("scaler_launch")} for o in g.get("optiscaler") or []]
         direct = [{"path": d.get("path"), "state": d.get("state"), "dx11": bool(d.get("dx11")),
                    "upscaler": d.get("upscaler"), "version": d.get("helix_version"),
                    "check": d.get("check")} for d in g.get("direct") or []]
@@ -280,6 +281,23 @@ class Adapters(object):
 
     async def helix_uninstall(self, opti_dir):
         res = await self.call("helix", "uninstall_optiscaler", opti_dir)
+        return {"ok": bool((res or {}).get("ok")),
+                "message": (res or {}).get("message") or (res or {}).get("error") or ""}
+
+    async def helix_install_scaler(self, game_dir):
+        """HelixSR Scaler (HelixSR's own OptiScaler package with HLX DLSS) into the game's folder."""
+        res = await self.call("helix", "install_scaler", game_dir)
+        return {"ok": bool((res or {}).get("ok")),
+                "message": (res or {}).get("message") or (res or {}).get("error") or ""}
+
+    async def helix_uninstall_scaler(self, game_dir):
+        res = await self.call("helix", "uninstall_scaler", game_dir)
+        return {"ok": bool((res or {}).get("ok")),
+                "message": (res or {}).get("message") or (res or {}).get("error") or ""}
+
+    async def helix_install_direct(self, dll_path):
+        """HLX FSR 4 in place of the game's own FSR 3.1 DLL."""
+        res = await self.call("helix", "install_direct", dll_path)
         return {"ok": bool((res or {}).get("ok")),
                 "message": (res or {}).get("message") or (res or {}).get("error") or ""}
 
