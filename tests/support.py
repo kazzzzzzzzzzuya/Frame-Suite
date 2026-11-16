@@ -18,11 +18,15 @@ REQUIRE = os.environ.get("FRAME_SUITE_REQUIRE_INTEGRATION") == "1"
 
 def have_upstreams():
     base = os.path.join(STAGE, "upstream") if STAGE else WORK
-    return all(os.path.isfile(os.path.join(base, s, "main.py")) for s in ("lsfg", "optiscaler", "helix"))
+    return all(os.path.isfile(os.path.join(base, s, "main.py")) for s in ("lsfg", "optiscaler", "helix", "mako"))
 
 
 def have_binaries():
-    return bool(STAGE) and os.path.isdir(os.path.join(STAGE, "bin")) and len(os.listdir(os.path.join(STAGE, "bin"))) > 3
+    """The built plugin with the downloaded binaries (lsfg-vk and OptiScaler), not a --skip-binaries build."""
+    if not STAGE or not os.path.isdir(os.path.join(STAGE, "bin")):
+        return False
+    names = os.listdir(os.path.join(STAGE, "bin"))
+    return any(n.startswith("lsfg-vk-") for n in names) and any(n.lower().startswith("optiscaler") for n in names)
 
 
 class Env(object):
@@ -94,8 +98,14 @@ class Env(object):
 
     def close(self):
         os.environ["PATH"] = self._old_path
+        # Every module of a bundled plugin goes: they keep the home folder of the test that loaded them.
+        roots = [os.path.realpath(p) for p in (WORK, STAGE, os.path.join(ROOT, ".work")) if p]
         for name in set(sys.modules) - self._old_modules:
-            if name.startswith(("framesuite_upstream_", "lsfg_vk")) or name == "decky":
+            mod = sys.modules.get(name)
+            path = os.path.realpath(getattr(mod, "__file__", None) or "") if mod else ""
+            plugin_module = any(path.startswith(r + os.sep) for r in roots) and \
+                not path.startswith(os.path.join(os.path.realpath(STAGE or ROOT), "py_modules", "framesuite"))
+            if plugin_module or name.startswith(("framesuite_upstream_", "lsfg_vk")) or name == "decky":
                 sys.modules.pop(name, None)
         shutil.rmtree(self.tmp, ignore_errors=True)
 

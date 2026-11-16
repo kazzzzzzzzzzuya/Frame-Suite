@@ -18,7 +18,7 @@ import shutil
 import sys
 import types
 
-SUBS = ("lsfg", "optiscaler", "helix")
+SUBS = ("lsfg", "optiscaler", "helix", "mako")
 SEP = "__"
 
 # Folders the stand-alone HelixSR Manager may have been installed under.
@@ -109,17 +109,18 @@ def migrate_helix_settings(real, dirs):
 
 def _overrides(real, sub):
     over = {"logger": _logger(real, sub.id)}
+    if sub.version:
+        over["DECKY_PLUGIN_VERSION"] = sub.version
+
+    # Events reach the frontend under the plugin's prefix, as its calls do (src/shims).
+    async def emit(event, *args):
+        return await real.emit(sub.id + SEP + event, *args)
+
+    over["emit"] = emit
     if sub.id == "helix":
         dirs = helix_dirs(real)
         migrate_helix_settings(real, dirs)
         over.update(dirs)
-        if sub.version:
-            over["DECKY_PLUGIN_VERSION"] = sub.version
-
-        async def emit(event, *args):
-            return await real.emit(sub.id + SEP + event, *args)
-
-        over["emit"] = emit
     return over
 
 
@@ -128,6 +129,7 @@ def load(sub, plugin_dir, real):
     upstream must not take the other two down with it."""
     root = os.path.join(plugin_dir, "upstream", sub.id)
     main = os.path.join(root, "main.py")
+    # A checkout for tests keeps a release-zip plugin's own folder intact (.work/upstream/<id>).
     saved = sys.modules.get("decky")
     try:
         if not os.path.isfile(main):

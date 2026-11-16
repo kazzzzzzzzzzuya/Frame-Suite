@@ -1,17 +1,66 @@
 import { definePlugin } from "@decky/api";
-import { DialogButton, Focusable, PanelSection, staticClasses } from "@decky/ui";
+import { DialogButton, Focusable, GamepadButton, PanelSection, staticClasses } from "@decky/ui";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { FaLayerGroup } from "react-icons/fa";
 import helixPlugin from "upstream:helix";
 import lsfgPlugin from "upstream:lsfg";
+import makoPlugin from "upstream:mako";
 import optiscalerPlugin from "upstream:optiscaler";
 import { getInfo, Info } from "./backend";
 import { nav, SubId, usePage } from "./nav";
 import { Home } from "./pages/Home";
 import { Setup } from "./pages/Setup";
 import { Versions } from "./pages/Versions";
-import { Note, RED } from "./ui";
+import { BLUE, InfoHint, infoVisibility, Note, RED, STYLES, useInfoHidden } from "./ui";
+import { makoLaunchFix, makoLaunchMark, makoLaunchPlan } from "./backend";
+import { readLaunchOptions, writeLaunchOptions } from "./steam";
+
+/** MAKO starts a game through its launcher (mako-run) in the game's launch options. Frame Suite puts it
+ *  there by itself for every game MAKO has a profile for, also one made on MAKO's own page, and takes
+ *  out again what it added when the profile goes (or MAKO's renderer, so no game fails to start).
+ *  Runs while Steam runs, also with the menu closed. */
+function watchMakoLaunchOptions(): () => void {
+  let running = false;
+  let lastPlan = "";
+  let lastFull = 0;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const plan = await makoLaunchPlan();
+      const key = JSON.stringify(plan);
+      if (key === lastPlan && Date.now() - lastFull < 60000) return;
+      lastPlan = key;
+      lastFull = Date.now();
+      for (const appid of new Set([...plan.want, ...plan.ours])) {
+        let current: string;
+        try {
+          current = await readLaunchOptions(appid);
+        } catch {
+          lastPlan = ""; // Steam did not answer: look again next time
+          continue;
+        }
+        const fix = await makoLaunchFix(appid, current);
+        if (!fix.changed) continue;
+        try {
+          await writeLaunchOptions(appid, fix.launch_options);
+          await makoLaunchMark(appid, fix.ours);
+        } catch (e) {
+          lastPlan = "";
+          console.warn(`[Frame Suite] launch options of ${appid}`, e);
+        }
+      }
+    } catch {
+      /* backend not ready yet */
+    } finally {
+      running = false;
+    }
+  };
+  void tick();
+  const timer = setInterval(() => void tick(), 5000);
+  return () => clearInterval(timer);
+}
 
 interface Upstream { content?: ReactNode; onDismount?: () => void; error?: string }
 
@@ -19,7 +68,13 @@ const TITLES: Record<string, string> = { home: "Frame Suite", setup: "Setup", ve
 
 function Title({ names }: { names: Record<string, string> }) {
   const page = usePage();
-  if (page === "home") return <div className={staticClasses.Title}>Frame Suite</div>;
+  if (page === "home")
+    return (
+      <div className={staticClasses.Title} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <FaLayerGroup style={{ color: BLUE }} />
+        Frame Suite
+      </div>
+    );
   return (
     <Focusable style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
       <DialogButton
@@ -41,9 +96,19 @@ function Title({ names }: { names: Record<string, string> }) {
 function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   const page = usePage();
   const inner = page !== "home";
+  const ours = page === "home" || page === "setup" || page === "versions";
+  const hidden = useInfoHidden();
   return (
     <Focusable
       noFocusRing
+      className={`fs-root${hidden && ours ? " fs-info-hidden" : ""}`}
+      // R1 hides and shows the explanations on Frame Suite's own pages, as MAKO does on its own.
+      // On the plugins' pages R1 stays theirs (lsfg-vk switches its tabs with it).
+      onButtonDown={(evt: { detail?: { button?: number; is_repeat?: boolean }; stopPropagation?: () => void }) => {
+        if (!ours || evt?.detail?.button !== GamepadButton.BUMPER_RIGHT) return;
+        evt.stopPropagation?.();
+        if (!evt.detail.is_repeat) infoVisibility.toggle();
+      }}
       onCancelButton={
         inner
           ? (evt: { stopPropagation?: () => void }) => {
@@ -54,7 +119,9 @@ function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
       }
       onCancelActionDescription={inner ? "Back" : undefined}
     >
+      <style>{STYLES}</style>
       <PageContent page={page} upstream={upstream} />
+      {ours && <InfoHint />}
     </Focusable>
   );
 }
@@ -67,7 +134,7 @@ function PageContent({ page, upstream }: { page: ReturnType<typeof usePage>; ups
     getInfo().then(setInfo).catch((e) => setError(String(e)));
   }, []);
 
-  if (page === "lsfg" || page === "optiscaler" || page === "helix") {
+  if (page === "lsfg" || page === "optiscaler" || page === "helix" || page === "mako") {
     const up = upstream[page];
     const sub = info?.subs.find((s) => s.id === page);
     if (up.error || (sub && !sub.ok)) {
@@ -98,6 +165,7 @@ export default definePlugin(() => {
     ["lsfg", lsfgPlugin as never],
     ["optiscaler", optiscalerPlugin as never],
     ["helix", helixPlugin as never],
+    ["mako", makoPlugin as never],
   ];
   for (const [id, factory] of factories) {
     try {
@@ -110,12 +178,14 @@ export default definePlugin(() => {
       names[id] = id;
     }
   }
+  const stopWatching = watchMakoLaunchOptions();
   return {
     name: "Frame Suite",
     titleView: <Title names={names} />,
     content: <Root upstream={upstream} />,
     icon: <FaLayerGroup />,
     onDismount() {
+      stopWatching();
       for (const up of Object.values(upstream)) {
         try {
           up.onDismount?.();

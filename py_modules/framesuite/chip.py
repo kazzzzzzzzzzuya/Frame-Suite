@@ -72,8 +72,8 @@ BUILTIN_GENERIC = {
     "optiscaler": {"fsr4_variant": None, "proxy_dll": "dxgi.dll", "helix": True},
     "default_preset": "balanced",
     "presets": {
-        "quality": {"label": "Quality", "lsfg": {"multiplier": 2, "flow_scale": 1.0, "performance_mode": False}},
-        "balanced": {"label": "Balanced", "lsfg": {"multiplier": 2, "flow_scale": 0.8, "performance_mode": True}},
-        "battery": {"label": "Battery", "lsfg": {"multiplier": 2, "flow_scale": 0.5, "performance_mode": True}},
+        "quality": {"label": "Quality", "lsfg": {"multiplier": 2, "flow_scale": 1.0, "performance_mode": False}, "mako": {"target_fps": 60, "max_multiplier": 2, "ultra_performance": False}},
+        "balanced": {"label": "Balanced", "lsfg": {"multiplier": 2, "flow_scale": 0.8, "performance_mode": True}, "mako": {"target_fps": 60, "max_multiplier": 2, "ultra_performance": False}},
+        "battery": {"label": "Battery", "lsfg": {"multiplier": 2, "flow_scale": 0.5, "performance_mode": True}, "mako": {"target_fps": 60, "max_multiplier": 2, "ultra_performance": True}},
     },
 }

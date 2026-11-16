@@ -3,7 +3,7 @@ import { callable } from "@decky/api";
 export interface SubInfo { id: string; title: string; version: string; repo: string; ok: boolean; error: string | null }
 export interface ProfileInfo {
   id: string; label: string; source: string; default_preset: string;
-  presets: { id: string; label: string }[];
+  presets: { id: string; label: string; mako?: { target_fps: number; max_multiplier: number; ultra_performance: boolean } | null }[];
 }
 export interface Info {
   version: string; repo: string; built: string | null;
@@ -22,15 +22,20 @@ export interface ToolboxRecord {
 export interface Conflict { id: string; level: "warn" | "error"; text: string; fix?: string; fix_label?: string }
 export interface Measurement { fps: number; low: number | null; spread: number; label: string; time: number; seconds: number }
 export interface GameOptions {
-  preset: string; route: "auto" | "optiscaler" | "lsfg"; variant: string | null; helix: boolean;
-  fg_in_game: boolean; multiplier: number | null;
+  preset: string; route: "auto" | "optiscaler" | "lsfg" | "mako"; variant: string | null; helix: boolean;
+  fg_in_game: boolean; multiplier: number | null; mako_target: number | null; mako_max: number | null;
+}
+export interface MakoProfile {
+  profile: string; frame_generation_enabled: boolean | null; adaptive: boolean | null; target_fps: number | null;
+  adaptive_max_multiplier: number | null; multiplier: number | null; ultra_performance: boolean | null;
+  disable_mako: boolean | null;
 }
 export interface GameView {
   appid: string; name: string; steam: boolean; busy: boolean; running: boolean; acked: boolean;
   live: LiveState;
   boost: { on: boolean; route: string | null; time: number | null; applied: Record<string, unknown> };
   options: GameOptions;
-  plan: { route: "optiscaler" | "lsfg"; reason: string; blockers: { id: string; text: string }[] };
+  plan: { route: "optiscaler" | "lsfg" | "mako"; reason: string; blockers: { id: string; text: string }[] };
   optiscaler: { available: boolean; found: boolean; patched: boolean; variant?: string | null; variant_label?: string | null };
   helix: { available: boolean; ok: boolean; built: boolean; active: string | null; inputs: string[] };
   lsfg: { available: boolean; installed: boolean; lossless: boolean; config: Record<string, unknown> | null; base_cap: number };
@@ -40,6 +45,7 @@ export interface GameView {
   summary: { active: string[]; live: string };
   measure: Measurement[];
   toolbox: ToolboxRecord | null;
+  mako: { available: boolean; installed: boolean; wrapper: string | null; profile: MakoProfile | null };
 }
 export interface Change {
   ok: boolean; error?: string; blocker?: string; need_ack?: boolean; anticheat?: string[];
@@ -48,6 +54,7 @@ export interface Change {
 export interface SetupState {
   lsfg: { available: boolean; installed: boolean; lossless: boolean };
   optiscaler: { available: boolean; installed: boolean };
+  mako: { available: boolean; installed: boolean; wrapper: string | null; version?: string | null };
   helix: {
     available: boolean; downloaded: boolean; built: boolean; active?: string | null; setup_state?: string | null;
     download?: { active?: boolean; bytes?: number; total?: number; phase?: string };
@@ -69,6 +76,7 @@ export const getGames = callable<[], { appid: string; name: string; boost?: bool
 export const getGame = callable<[appid: string, launch: string | null, name: string | null], GameView>("suite_game");
 export interface LiveState {
   running: boolean; readable: boolean; optiscaler: boolean; fsr4: boolean; helix: boolean; lsfg: boolean;
+  mako?: boolean;
 }
 export const getLive = callable<[appid: string], LiveState>("suite_live");
 export const setOption = callable<[appid: string, key: string, value: unknown, launch: string | null],
@@ -85,4 +93,11 @@ export const measureStatus = callable<[], MeasureStatus>("suite_measure_status")
 export const measureClear = callable<[appid: string], { ok: boolean }>("suite_measure_clear");
 export const prepareUpdate = callable<[], { ok: boolean }>("suite_prepare_update");
 export const setToolboxFg = callable<[on: boolean], Info>("suite_set_toolbox_fg");
+export const makoLaunchPlan = callable<[], { wrapper: string | null; want: string[]; ours: string[] }>(
+  "suite_mako_launch_plan",
+);
+export const makoLaunchFix = callable<[appid: string, launch: string], { launch_options: string; changed: boolean; ours: boolean }>(
+  "suite_mako_launch_fix",
+);
+export const makoLaunchMark = callable<[appid: string, added: boolean], { ok: boolean }>("suite_mako_launch_mark");
 export const getUpdates = callable<[force: boolean], Updates>("suite_updates");

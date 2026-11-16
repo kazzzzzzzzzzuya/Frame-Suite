@@ -1,13 +1,55 @@
 {
   "id": "z1-extreme",
   "label": "Ryzen Z1 Extreme (Radeon 780M, RDNA 3)",
-  "match": { "cpu": "Z1 Extreme" },
-  "source": "FSR 4.1.1 from OptiScaler's bundled FFX 2.3 SDK, as reported working by the owner of a Legion Go on SteamOS. lsfg-vk values are starting points, not measured: use Measure on a game to compare.",
-  "optiscaler": { "fsr4_variant": "rdna4-native", "proxy_dll": "dxgi.dll", "helix": true },
+  "match": {
+    "cpu": "Z1 Extreme"
+  },
+  "source": "FSR 4.1.1 from OptiScaler's bundled FFX 2.3 SDK, as reported working by the owner of a Legion Go on SteamOS. lsfg-vk values are starting points, not measured: use Measure on a game to compare. MAKO: adaptive frame generation aiming at 72 fps (half the Legion Go's 144 Hz, so frames stay even) with at most 2x generated, 60 fps on the Battery preset.",
+  "optiscaler": {
+    "fsr4_variant": "rdna4-native",
+    "proxy_dll": "dxgi.dll",
+    "helix": true
+  },
   "default_preset": "balanced",
   "presets": {
-    "quality": { "label": "Quality", "lsfg": { "multiplier": 2, "flow_scale": 1.0, "performance_mode": false } },
-    "balanced": { "label": "Balanced", "lsfg": { "multiplier": 2, "flow_scale": 0.8, "performance_mode": true } },
-    "battery": { "label": "Battery", "lsfg": { "multiplier": 2, "flow_scale": 0.5, "performance_mode": true } }
+    "quality": {
+      "label": "Quality",
+      "lsfg": {
+        "multiplier": 2,
+        "flow_scale": 1.0,
+        "performance_mode": false
+      },
+      "mako": {
+        "target_fps": 72,
+        "max_multiplier": 2,
+        "ultra_performance": false
+      }
+    },
+    "balanced": {
+      "label": "Balanced",
+      "lsfg": {
+        "multiplier": 2,
+        "flow_scale": 0.8,
+        "performance_mode": true
+      },
+      "mako": {
+        "target_fps": 72,
+        "max_multiplier": 2,
+        "ultra_performance": false
+      }
+    },
+    "battery": {
+      "label": "Battery",
+      "lsfg": {
+        "multiplier": 2,
+        "flow_scale": 0.5,
+        "performance_mode": true
+      },
+      "mako": {
+        "target_fps": 60,
+        "max_multiplier": 2,
+        "ultra_performance": true
+      }
+    }
   }
 }

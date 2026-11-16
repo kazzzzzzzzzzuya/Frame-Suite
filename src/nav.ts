@@ -2,7 +2,7 @@
 // the content agree, and so the panel reopens where it was closed.
 import { useEffect, useState } from "react";
 
-export type SubId = "lsfg" | "optiscaler" | "helix";
+export type SubId = "lsfg" | "optiscaler" | "helix" | "mako";
 export type Page = "home" | "setup" | "versions" | SubId;
 
 let page: Page = "home";

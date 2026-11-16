@@ -1,7 +1,7 @@
 import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ToggleField } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { getUpdates, Info, prepareUpdate, Release, setProfile, setToolboxFg, Updates } from "../backend";
-import { confirm, GREEN, Note, RED, toast } from "../ui";
+import { confirm, GREEN, Header, Note, RED, toast } from "../ui";
 
 const PLUGIN_NAME = "Frame Suite"; // must equal plugin.json "name": Decky finds the installed plugin by it
 const UPDATE = 2;
@@ -47,7 +47,8 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
 
   return (
     <>
-      <PanelSection title="Chip">
+      <PanelSection>
+        <Header>Chip</Header>
         <Note>{info.chip.cpu || "Unknown processor"}{info.chip.product ? `\n${info.chip.vendor} ${info.chip.product}` : ""}</Note>
         <PanelSectionRow>
           <DropdownItem
@@ -64,7 +65,8 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
         <Note>A profile only decides what Boost sets up for games you switch on from now on.</Note>
       </PanelSection>
 
-      <PanelSection title="What is inside">
+      <PanelSection>
+        <Header>What is inside</Header>
         <Note>Frame Suite {info.version}{info.built ? `\nBuilt ${new Date(info.built).toLocaleDateString()}` : ""}</Note>
         {info.subs.map((s) => (
           <Note key={s.id} color={s.ok ? undefined : RED}>
@@ -73,7 +75,8 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
         ))}
       </PanelSection>
 
-      <PanelSection title="Updates">
+      <PanelSection>
+        <Header>Updates</Header>
         {updates?.ok && updates.newer && (
           <>
             <Note color={GREEN}>Frame Suite {updates.latest} is available.{updates.releases[0]?.notes ? `\n${updates.releases[0].notes}` : ""}</Note>
@@ -82,7 +85,7 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
             </PanelSectionRow>
           </>
         )}
-        {updates?.ok && !updates.newer && <Note>Up to date ({updates.current}). A new build appears here after any of the three plugins publishes a stable release.</Note>}
+        {updates?.ok && !updates.newer && <Note>Up to date ({updates.current}). A new build appears here after any of the four plugins publishes a stable release.</Note>}
         {updates && !updates.ok && <Note color={RED}>{updates.error}</Note>}
         <PanelSectionRow>
           <ButtonItem layout="below" disabled={checking} onClick={() => check(true)}>{checking ? "Checking…" : "Check for updates"}</ButtonItem>
@@ -116,7 +119,8 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
         )}
       </PanelSection>
 
-      <PanelSection title="For other plugins">
+      <PanelSection>
+        <Header>For other plugins</Header>
         <Note>What Boost set up per game is written to{`\n${info.bridge}\n`}for tools like the Legion Go Toolbox to read.</Note>
         <PanelSectionRow>
           <ToggleField

@@ -15,7 +15,8 @@ import time
 
 from . import adapters, bridge, chip, host, ini, launchopts, live, toolbox
 
-ROUTES = ("optiscaler", "lsfg")
+ROUTES = ("optiscaler", "lsfg", "mako")
+MAKO_TARGETS = (30, 36, 40, 45, 48, 60, 72, 90, 120, 144)
 MENU_KEYS = [  # Windows virtual-key codes OptiScaler understands
     {"code": "auto", "label": "Insert (OptiScaler's default)"},
     {"code": "0x24", "label": "Home"},
@@ -29,7 +30,13 @@ BRIDGE_TRIGGERS = {
                    "manual_unpatch_directory": False},
     "lsfg": {"update_game_config": True, "reset_game_config": True, "reset_game_configs": False,
              "reset_all_game_configs": False, "uninstall_lsfg_vk": False},
+    # MAKO: any change to its profiles (made on its own page) is picked up as a whole.
+    "mako": {"capture_game_profile": False, "create_profile": False, "delete_profile": False, "rename_profile": False,
+             "update_profile_config": False, "update_profile_config_fields": False, "set_profile_power_modes": False,
+             "install_mako": False, "uninstall_mako": False, "update_mako_config": False},
 }
+MAKO_CONFIG = os.path.join(".config", "mako-render")
+MAKO_STATE_TTL_S = 30.0
 BRIDGE_RESYNC_S = 600
 TOOLBOX_POLL_S = 3.0          # how often the Legion Go Toolbox's request file is looked at
 TOOLBOX_RECHECK_S = 30.0      # ... and acted on even when unchanged (stale requests expire)
@@ -104,6 +111,10 @@ class Suite(object):
         self.sync_task = None
         self.toolbox_task = None
         self._live_target = {}       # appid -> (OptiScaler's folder, its DLL), from the last full look
+        self._mako_info = {}         # appid -> MAKO profile fields, for the bridge and the launch options
+        self._mako_stamp = None
+        self._mako_state = None
+        self._mako_state_at = 0.0
         self._tb_stamp = None
         self._tb_checked = 0.0
         self._lsfg_ready = False
@@ -136,13 +147,17 @@ class Suite(object):
             for name, per_game in names.items():
                 key = sub_id + host.SEP + name
                 if key in out:
-                    out[key] = self._then_sync(out[key], per_game)
+                    out[key] = self._then_sync(out[key], per_game, mako=sub_id == "mako")
         return out
 
-    def _then_sync(self, fn, per_game):
+    def _then_sync(self, fn, per_game, mako=False):
         async def call(*args, **kwargs):
             res = await fn(*args, **kwargs)
             try:
+                if mako:
+                    self._mako_state_at = 0.0
+                    await self.mako_sync(force=True)
+                    return res
                 appid = str(args[0]) if per_game and args and str(args[0]).lstrip("-").isdigit() else None
                 await self.sync_bridge([appid] if appid else None)
             except Exception:
@@ -172,7 +187,7 @@ class Suite(object):
             "profile": self.profile_id(),
             "profile_chosen": self.store.data.get("profile"),
             "profiles": [{"id": p["id"], "label": p.get("label", p["id"]), "source": p.get("source", ""),
-                          "presets": [{"id": k, "label": v.get("label", k)} for k, v in p["presets"].items()],
+                          "presets": [{"id": k, "label": v.get("label", k), "mako": v.get("mako")} for k, v in p["presets"].items()],
                           "default_preset": p.get("default_preset")}
                          for p in self.profiles.values()],
             "subs": [self.subs[s].public() for s in host.SUBS],
@@ -206,6 +221,20 @@ class Suite(object):
             "helix": bool(o.get("helix", (p.get("optiscaler") or {}).get("helix", True))),
             "fg_in_game": bool(o.get("fg_in_game", False)),
             "multiplier": int(o["multiplier"]) if str(o.get("multiplier", "")).isdigit() else None,
+            "mako_target": int(o["mako_target"]) if o.get("mako_target") in MAKO_TARGETS else None,
+            "mako_max": int(o["mako_max"]) if o.get("mako_max") in (2, 3, 4) else None,
+        }
+
+    def mako_config_for(self, appid):
+        """MAKO fields for this game: the chip preset's adaptive frame generation, with the game's own choices."""
+        opts = self.options(appid)
+        pre = dict(self.profile()["presets"][opts["preset"]].get("mako") or {})
+        return {
+            "frame_generation_enabled": True,
+            "adaptive": True,
+            "target_fps": opts["mako_target"] or int(pre.get("target_fps") or 60),
+            "adaptive_max_multiplier": opts["mako_max"] or int(pre.get("max_multiplier") or 2),
+            "ultra_performance": bool(pre.get("ultra_performance", False)),
         }
 
     def lsfg_config_for(self, appid):
@@ -216,7 +245,7 @@ class Suite(object):
         return cfg
 
     async def set_option(self, appid, key, value, launch_options=None):
-        if key not in ("preset", "route", "variant", "helix", "fg_in_game", "multiplier"):
+        if key not in ("preset", "route", "variant", "helix", "fg_in_game", "multiplier", "mako_target", "mako_max"):
             return {"ok": False, "error": "Unknown option."}
         entry = self.store.game(appid, create=True)
         if value in (None, "", "auto") and key != "helix" and key != "fg_in_game":
@@ -231,6 +260,13 @@ class Suite(object):
             res = await self.ad.lsfg_set(appid, entry.get("name") or "App %s" % appid, self.lsfg_config_for(appid))
             if not res["ok"]:
                 warnings.append("lsfg-vk did not take the new settings: %s" % res["message"])
+        mk = (boost.get("applied") or {}).get("mako")
+        if boost.get("on") and boost.get("route") == "mako" and key in ("preset", "mako_target", "mako_max") and mk:
+            res = await self._safe(self.ad.mako_set(mk, self.mako_config_for(appid)),
+                                   {"ok": False, "message": "MAKO did not answer"})
+            if not res["ok"]:
+                warnings.append("MAKO did not take the new settings: %s" % res["message"])
+            await self.mako_sync(force=True)
         view = await self.game(appid, launch_options, entry.get("name"))
         return {"ok": True, "warnings": warnings, "view": view}
 
@@ -250,6 +286,9 @@ class Suite(object):
             "ls": await self._safe(self.ad.lsfg_state(), {"available": False, "installed": False, "lossless": False}),
             "lcfg": await self._safe(self.ad.lsfg_config(appid), None),
             "hstate": await self._safe(self.ad.helix_state(), {"available": False, "downloaded": False, "built": False}),
+            "mk": await self._safe(self.ad.mako_state(), {"available": False, "installed": False, "wrapper": None}),
+            "mprof": await self._safe(self.ad.mako_game(appid), None),
+            "running": bool(await asyncio.to_thread(live.game_pids, appid, self.proc)),
         }
 
     async def _safe(self, coro, fallback):
@@ -270,19 +309,26 @@ class Suite(object):
         dx11 = bool(hx.get("ok") and hx.get("inputs_dx11"))
         if opts["route"] != "auto":
             route, reason = opts["route"], "Chosen by you for this game."
+        elif f.get("mprof"):
+            route, reason = "mako", "MAKO already has a profile for this game."
         elif not f["steam"]:
-            route, reason = "lsfg", "A game added to Steam by hand: only lsfg-vk works for these."
+            route, reason = ("mako", "A game added to Steam by hand: MAKO handles these.") if f["mk"].get("installed") \
+                else ("lsfg", "A game added to Steam by hand: only lsfg-vk works for these.")
         elif og.get("patched") or usable:
             route, reason = "optiscaler", "OptiScaler is already in this game."
         elif hx.get("ok") and not dx11 and (hx.get("inputs") or any(not d["dx11"] for d in hx.get("direct", []))):
             found = hx.get("inputs") or ["FSR 3.1"]
             route, reason = "optiscaler", "The game has %s, which OptiScaler can replace with FSR 4." % " / ".join(found)
         elif dx11:
-            route, reason = "lsfg", "A DirectX 11 game: OptiScaler's FSR 4 and HelixSR need DirectX 12, lsfg-vk does not."
+            route, reason = "lsfg", "A DirectX 11 game: OptiScaler's FSR 4 and HelixSR need DirectX 12; frame generation works with any game."
         elif hx.get("ok"):
-            route, reason = "lsfg", "No DLSS, XeSS or FSR found in the game's files, so lsfg-vk it is."
+            route, reason = "lsfg", "No DLSS, XeSS or FSR found in the game's files: frame generation it is."
         else:
-            route, reason = "lsfg", "The game's files could not be checked for DLSS / FSR; lsfg-vk works with any game."
+            route, reason = "lsfg", "The game's files could not be checked for DLSS / FSR; frame generation works with any game."
+        if route == "lsfg" and opts["route"] == "auto" and f["mk"].get("installed"):
+            # MAKO is set up: its adaptive frame generation needs no Lossless Scaling and holds a target.
+            route = "mako"
+            reason = reason.replace("frame generation", "MAKO's adaptive frame generation")
         blockers = []
         if route == "optiscaler":
             if not f["steam"]:
@@ -299,6 +345,16 @@ class Suite(object):
                 blockers.append({"id": "running", "text": "Close the game first: its files cannot be changed while it runs."})
             elif hx.get("ok") and hx.get("steam_busy"):
                 blockers.append({"id": "steam-busy", "text": hx["steam_busy"]})
+        elif route == "mako":
+            mk = f["mk"]
+            if not mk.get("available"):
+                blockers.append({"id": "sub-mako", "text": "The MAKO part did not load (see Versions)."})
+            elif not mk.get("installed"):
+                blockers.append({"id": "setup-mako", "text": "MAKO's renderer is not installed yet. Run Setup first."})
+            elif not f.get("mprof") and not f.get("running"):
+                blockers.append({"id": "start-game", "text": "Start the game first: MAKO recognises a game by its "
+                                                             "running program. Switch this on while it runs, then "
+                                                             "restart the game once."})
         else:
             ls = f["ls"]
             if not f["steam"]:
@@ -355,6 +411,25 @@ class Suite(object):
             out.append({"id": "boost-lost", "level": "error", "fix": "boost-reapply", "fix_label": "Set it up again",
                         "text": "The switch is on, but OptiScaler is no longer in the game's files (a game update "
                                 "or \"Verify integrity\" restores the originals)."})
+        mprof = f.get("mprof")
+        mako_on = bool(mprof and mprof.get("frame_generation_enabled") and not mprof.get("disable_mako"))
+        if mako_on and lsfg_mult > 1:
+            out.append({"id": "double-fg-mako", "level": "error", "fix": "lsfg-reset",
+                        "fix_label": "Turn lsfg-vk off for this game",
+                        "text": "Two frame generators: MAKO and lsfg-vk %d× are both on for this game. They multiply "
+                                "each other's frames and add delay. Use one." % lsfg_mult})
+        if mako_on and patched and opts["fg_in_game"]:
+            out.append({"id": "double-fg-mako-game", "level": "error",
+                        "text": "Two frame generators: MAKO and the game's own (through OptiScaler). Switch frame "
+                                "generation off in the game's settings, or MAKO's off on its page."})
+        if mprof and launch_options is not None and f["mk"].get("wrapper") and \
+                not launchopts.has_wrapper(launch_options, adapters.MAKO_RUN):
+            out.append({"id": "mako-launch-missing", "level": "warn", "fix": "mako-launch-add", "fix_label": "Add it now",
+                        "text": "MAKO has a profile for this game, but its launcher is not in the launch options yet "
+                                "(Frame Suite adds it within seconds; without it the game starts without MAKO)."})
+        if boost.get("on") and boost.get("route") == "mako" and not mprof:
+            out.append({"id": "boost-lost", "level": "error", "fix": "boost-reapply", "fix_label": "Set it up again",
+                        "text": "The switch is on, but MAKO has no profile for this game any more."})
         if boost.get("on") and boost.get("route") == "lsfg" and not lcfg:
             out.append({"id": "boost-lost", "level": "error", "fix": "boost-reapply", "fix_label": "Set it up again",
                         "text": "The switch is on, but lsfg-vk has no profile for this game any more."})
@@ -385,9 +460,17 @@ class Suite(object):
             lines.append("%s %s" % (helix[0].get("upscaler") or "HelixSR", helix[0].get("version") or ""))
         if lcfg:
             lines.append("lsfg-vk %d×" % int(lcfg.get("multiplier") or 1))
+        mprof = f.get("mprof")
+        if mprof and not mprof.get("disable_mako"):
+            if not mprof.get("frame_generation_enabled"):
+                lines.append("MAKO (frame generation off)")
+            elif mprof.get("adaptive"):
+                lines.append("MAKO adaptive %s fps, up to %s×" % (mprof.get("target_fps"), mprof.get("adaptive_max_multiplier")))
+            else:
+                lines.append("MAKO %s×" % mprof.get("multiplier"))
         if livecheck.get("running") and livecheck.get("readable"):
             loaded = [n for k, n in (("optiscaler", "OptiScaler"), ("fsr4", "FSR 4 upscaler"),
-                                     ("helix", "HelixSR"), ("lsfg", "lsfg-vk")) if livecheck.get(k)]
+                                     ("helix", "HelixSR"), ("lsfg", "lsfg-vk"), ("mako", "MAKO")) if livecheck.get(k)]
             live_line = "Running now, loaded: " + (", ".join(loaded) if loaded else "none of them")
         elif livecheck.get("running"):
             live_line = "Running now (its memory could not be read to check what is loaded)."
@@ -427,9 +510,10 @@ class Suite(object):
             "summary": self._summary(f, entry, plan, livecheck),
             "measure": self.store.data.get("measure", {}).get(appid, []),
             "toolbox": (self.store.data.get("toolbox") or {}).get(appid),
+            "mako": dict(f["mk"], profile=f.get("mprof")),
             "busy": bool(self.busy.get(appid)),
         }
-        if entry is not None or og.get("patched") or f["lcfg"]:
+        if entry is not None or og.get("patched") or f["lcfg"] or f.get("mprof"):
             self._write_bridge(appid, view)
         return view
 
@@ -437,17 +521,25 @@ class Suite(object):
         entry = self.store.game(appid) or {}
         boost = entry.get("boost") or {}
         on = bool(boost.get("on"))
-        route = boost.get("route") if on else ("optiscaler" if patched else "lsfg" if lsfg_mult > 1 else None)
+        mk = self._mako_info.get(appid)
+        mako_on = bool(mk and mk.get("frame_generation_enabled") and not mk.get("disable_mako"))
+        route = boost.get("route") if on else ("optiscaler" if patched else "mako" if mako_on
+                                               else "lsfg" if lsfg_mult > 1 else None)
         tb = (self.store.data.get("toolbox") or {}).get(appid)
-        if route is None and not on and not tb:
+        if route is None and not on and not tb and not mk:
             return None
+        fg = bridge.frame_generation(route, self.options(appid), lsfg_mult, patched)
+        if mako_on:
+            fg = bridge.mako_frame_generation(mk)
         out = {
             "name": name or entry.get("name") or (tb or {}).get("name") or "App %s" % appid,
             "boost": on, "route": route,
-            "frame_generation": bridge.frame_generation(route, self.options(appid), lsfg_mult, patched),
+            "frame_generation": fg,
             "optiscaler": {"patched": bool(patched), "fsr4_variant": variant},
             "lsfg": {"multiplier": lsfg_mult},
         }
+        if mk:
+            out["mako"] = bridge.mako_entry(mk)
         if tb:
             out["toolbox"] = {"standby": tb.get("since") is not None and not tb.get("refused"),
                               "since": tb.get("since"), "multiplier": tb.get("applied"),
@@ -459,6 +551,84 @@ class Suite(object):
         The page polls this and asks for the full picture when it changes."""
         target, dll = self._live_target.get(str(appid), (None, None))
         return await asyncio.to_thread(live.check, str(appid), target, dll, self.proc)
+
+    # --- MAKO: profiles, the bridge and the launch options --------------------------------------
+
+    def _mako_stamp_now(self):
+        out = []
+        for fn in ("conf.toml", "profile-metadata.json", "profile-wrapper-settings.json"):
+            try:
+                st = os.stat(os.path.join(self.home, MAKO_CONFIG, fn))
+                out.append((fn, st.st_mtime_ns, st.st_size))
+            except OSError:
+                out.append((fn, None, None))
+        return tuple(out)
+
+    async def mako_sync(self, force=False):
+        """Read MAKO's game profiles again when its files changed, and tell the bridge."""
+        stamp = self._mako_stamp_now()
+        if not force and stamp == self._mako_stamp:
+            return
+        self._mako_stamp = stamp
+        info = {}
+        if self.ad.has("mako"):
+            profiles = await self._safe(self.ad.mako_profiles(), None)
+            if profiles is None:
+                return
+            for appid, profile in profiles.items():
+                cfg = await self._safe(self.ad.mako_config(profile), None)
+                info[appid] = dict(cfg or {}, profile=profile)
+        if info != self._mako_info:
+            old = set(self._mako_info)
+            self._mako_info = info
+            await self.sync_bridge(sorted(old | set(info)))
+
+    async def _mako_installed(self):
+        now = time.time()
+        if self._mako_state is None or now - self._mako_state_at > MAKO_STATE_TTL_S:
+            self._mako_state = await self._safe(self.ad.mako_state(), {"available": False, "installed": False,
+                                                                       "wrapper": None})
+            self._mako_state_at = now
+        return self._mako_state
+
+    def _mako_mark(self, appid, ours):
+        marks = self.store.data.setdefault("mako_launch", {})
+        if ours:
+            marks[str(appid)] = True
+        else:
+            marks.pop(str(appid), None)
+        self.store.save()
+
+    async def mako_launch_plan(self):
+        """For the frontend, which writes Steam's launch options: games that should start through
+        MAKO's launcher, and the ones Frame Suite added it to. Without MAKO's renderer nothing is
+        wanted, so the launcher is taken out again before a game could fail to start."""
+        await self.mako_sync()
+        mk = await self._mako_installed()
+        wrapper = mk.get("wrapper") if mk.get("installed") else None
+        want = sorted(a for a, i in self._mako_info.items() if not i.get("disable_mako")) if wrapper else []
+        return {"wrapper": wrapper, "want": want, "ours": sorted(self.store.data.get("mako_launch", {}))}
+
+    async def mako_launch_fix(self, appid, launch_options):
+        """The launch options this game should have as far as MAKO's launcher goes:
+        {"launch_options", "changed", "ours"} (ours: whether Frame Suite now has it there)."""
+        appid = str(appid)
+        text = launch_options or ""
+        plan = await self.mako_launch_plan()
+        has = launchopts.has_wrapper(text, adapters.MAKO_RUN)
+        if appid in plan["want"] and not has:
+            new, _ = launchopts.add_wrapper(text, plan["wrapper"])
+            return {"launch_options": new, "changed": True, "ours": True}
+        if appid not in plan["want"] and appid in plan["ours"] and has:
+            return {"launch_options": launchopts.remove_wrapper(text, adapters.MAKO_RUN), "changed": True,
+                    "ours": False}
+        return {"launch_options": text, "changed": False, "ours": appid in plan["ours"] and has}
+
+    def mako_launch_mark(self, appid, added):
+        if not str(appid).isdigit():
+            return {"ok": False}
+        self._mako_mark(appid, bool(added))
+        return {"ok": True}
 
     def _bridge_top(self):
         return {"lsfg_ready": bool(self._lsfg_ready), "toolbox_fg": self.toolbox_allowed()}
@@ -495,6 +665,7 @@ class Suite(object):
             known = set(((bridge.read(self.home) or {}).get("games") or {}))
             known |= set(self.store.data.get("games", {}))
             known |= set(self.store.data.get("toolbox", {}))
+            known |= set(self._mako_info)
             appids = sorted(known)
         entries = {}
         configs = None
@@ -567,6 +738,12 @@ class Suite(object):
 
     async def _toolbox_forever(self):
         while True:
+            try:
+                await self.mako_sync()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.log.exception("Frame Suite: MAKO profiles")
             try:
                 await self.toolbox_sync()
             except asyncio.CancelledError:
@@ -754,6 +931,32 @@ class Suite(object):
                 new_lo, added = launchopts.add_env(launch_options, env)
             if opts["helix"]:
                 await self._helix_into_game(appid, f, applied, warnings, done)
+        elif route == "mako":
+            prof = f.get("mprof")
+            if prof:
+                applied["mako"] = prof["profile"]
+                applied["mako_created"] = False
+                done.append("MAKO already had a profile for this game; kept as it is.")
+            else:
+                res = await self.ad.mako_capture(appid, name)
+                if not res["ok"] or not res["profile"]:
+                    return {"ok": False, "error": res["message"] or "MAKO could not make a profile for this game."}
+                cfg = self.mako_config_for(appid)
+                set_res = await self.ad.mako_set(res["profile"], cfg)
+                if not set_res["ok"]:
+                    await self._safe(self.ad.mako_delete(res["profile"]), None)
+                    return {"ok": False, "error": "MAKO did not take the settings: %s" % set_res["message"]}
+                applied["mako"] = res["profile"]
+                applied["mako_created"] = True
+                done.append("MAKO adaptive frame generation: %d fps on screen, at most %d× generated. Restart the "
+                            "game once for it to start." % (cfg["target_fps"], cfg["adaptive_max_multiplier"]))
+            wrapper = f["mk"].get("wrapper")
+            if wrapper:
+                new_lo, did = launchopts.add_wrapper(launch_options, wrapper)
+                if did:
+                    applied["wrapper"] = True
+                    self._mako_mark(appid, True)
+            await self.mako_sync(force=True)
         else:
             if f["lcfg"]:
                 applied["lsfg"] = "kept"
@@ -833,10 +1036,20 @@ class Suite(object):
                 res = await self.ad.lsfg_reset(appid)
                 (done if res["ok"] else warnings).append(
                     "lsfg-vk profile removed." if res["ok"] else "lsfg-vk profile not removed: %s" % res["message"])
+            if applied.get("mako") and applied.get("mako_created"):
+                res = await self._safe(self.ad.mako_delete(applied["mako"]), {"ok": False, "message": "no answer"})
+                (done if res["ok"] else warnings).append(
+                    "MAKO profile removed." if res["ok"] else "MAKO profile not removed: %s" % res["message"])
+            if applied.get("wrapper"):
+                self._mako_mark(appid, False)
+            if applied.get("mako"):
+                await self.mako_sync(force=True)
             if launch_options == boost.get("lo_after"):
                 new_lo = boost.get("lo_before") or ""
             elif applied.get("patched"):
                 new_lo = launchopts.remove_env(launch_options, boost.get("lo_added"))
+            elif applied.get("wrapper"):
+                new_lo = launchopts.remove_wrapper(launch_options, adapters.MAKO_RUN)
             else:
                 new_lo = launch_options    # OptiScaler was there before and stays: so do its settings
             entry["boost"] = {"on": False}
@@ -887,6 +1100,16 @@ class Suite(object):
                 res = await self._safe(self.ad.lsfg_reset(appid), {"ok": False, "message": "no answer"})
                 (done if res["ok"] else warnings).append(
                     "lsfg-vk profile removed." if res["ok"] else "lsfg-vk: %s" % res["message"])
+            mprof = await self._safe(self.ad.mako_game(appid), None)
+            if mprof:
+                res = await self._safe(self.ad.mako_delete(mprof["profile"]), {"ok": False, "message": "no answer"})
+                (done if res["ok"] else warnings).append(
+                    "MAKO profile removed." if res["ok"] else "MAKO: %s" % res["message"])
+            if launchopts.has_wrapper(new_lo, adapters.MAKO_RUN):
+                new_lo = launchopts.remove_wrapper(new_lo, adapters.MAKO_RUN)
+                done.append("MAKO's launcher taken out of the launch options.")
+            self._mako_mark(appid, False)
+            await self.mako_sync(force=True)
             entry = self.store.game(appid)
             if entry:
                 entry["boost"] = {"on": False}
@@ -896,7 +1119,7 @@ class Suite(object):
                 rec.update(blocked=True, applied=None, restore=None, created=False, since=None)
             self.store.save()
             if not done and not warnings:
-                done.append("Nothing from the three plugins was in this game.")
+                done.append("Nothing from the four plugins was in this game.")
             view = await self.game(appid, new_lo, (entry or {}).get("name"))
             return {"ok": True, "launch_options": new_lo, "launch_changed": new_lo != launch_options,
                     "done": done, "warnings": warnings, "view": view}
@@ -924,6 +1147,12 @@ class Suite(object):
                     entry["boost"].update(lo_after=new_lo, lo_added=added, lo_before=launch_options)
                     self.store.save()
                 message = "Launch settings added again."
+        elif fix_id == "mako-launch-add":
+            res = await self.mako_launch_fix(appid, launch_options)
+            new_lo = res["launch_options"]
+            if res["changed"] and res["ours"]:
+                self._mako_mark(appid, True)
+            message = "MAKO's launcher added to the launch options." if res["changed"] else ""
         elif fix_id == "wrapper-remove":
             toks = [t for t in launchopts.split_tokens(launch_options)
                     if not re.search(r"(^|/)fgmod(-uninstaller\.sh)?$", t.strip("'\""))]
@@ -981,16 +1210,18 @@ class Suite(object):
         ls = await self._safe(self.ad.lsfg_state(), {"available": False, "installed": False, "lossless": False})
         bundle = await self._safe(self.ad.og_bundle(), {"available": False, "installed": False})
         hs = await self._safe(self.ad.helix_state(), {"available": False, "downloaded": False, "built": False})
+        self._mako_state_at = 0.0
+        mk = await self._mako_installed()
         download = {}
         if self.ad.has("helix") and self.wizard.get("step") == "helix" and self.wizard.get("phase") == "downloading":
             download = await self._safe(self.ad.call("helix", "get_download_status"), {})
-        return {"lsfg": ls, "optiscaler": bundle, "helix": dict(hs, download=download),
+        return {"lsfg": ls, "optiscaler": bundle, "helix": dict(hs, download=download), "mako": mk,
                 "wizard": dict(self.wizard), "variant": self.options("0")["variant"]}
 
     async def setup_run(self, step):
         if self.wizard_task and not self.wizard_task.done():
             return {"ok": False, "error": "A setup step is still running."}
-        if step not in ("lsfg", "optiscaler", "helix"):
+        if step not in ("lsfg", "optiscaler", "helix", "mako"):
             return {"ok": False, "error": "Unknown step."}
         self.wizard = {"step": step, "phase": "starting", "error": None, "tag": None}
         self.wizard_task = asyncio.ensure_future(self._setup_step(step))
@@ -1004,6 +1235,12 @@ class Suite(object):
                 res = await self.ad.call("lsfg", "install_lsfg_vk")
                 if not (res or {}).get("success"):
                     raise RuntimeError((res or {}).get("error") or "lsfg-vk could not be installed.")
+            elif step == "mako":
+                w["phase"] = "installing"
+                res = await self.ad.call("mako", "install_mako")
+                if not (res or {}).get("success"):
+                    raise RuntimeError((res or {}).get("error") or "MAKO's renderer could not be installed.")
+                self._mako_state_at = 0.0
             elif step == "optiscaler":
                 w["phase"] = "installing"
                 res = await self.ad.og_install_bundle(self.options("0")["variant"])
