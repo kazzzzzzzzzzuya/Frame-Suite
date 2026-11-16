@@ -1,15 +1,16 @@
 # Frame Suite
 
-Three Decky plugins in one, plus a per-game switch that sets them up for your device's chip.
+Four Decky plugins in one, plus a per-game switch that sets them up for your device's chip.
 
 | Inside | What it does |
 |---|---|
+| [MAKO](https://github.com/eugeniosegala/MAKO) | Adaptive frame generation for any game with its own model (no Lossless Scaling needed), scaling, shaders, HDR |
 | [decky-lsfg-vk](https://github.com/xXJSONDeruloXx/decky-lsfg-vk) | Lossless Scaling frame generation (lsfg-vk 2.0) for any game |
 | [Decky-Framegen](https://github.com/xXJSONDeruloXx/Decky-Framegen) | OptiScaler: FSR 4 / XeSS upscaling and FSR frame generation in DirectX 12 games |
 | [HelixSR Manager](https://github.com/PeroTuncay/DeckyHelixSRManager) | HelixSR's upscaler next to FSR 4, inside OptiScaler or in place of a game's FSR 3.1 |
 
-The three plugins run **unmodified**: their full panels are one button away, and every stable release
-of any of them produces a new Frame Suite build automatically. This is an independent repackaging, not
+The four plugins run **unmodified**: their full panels are one button away (the tiles on the first
+page), and every stable release of any of them produces a new Frame Suite build automatically. This is an independent repackaging, not
 affiliated with or supported by their authors. Please report problems here, not to them.
 
 Not yet verified on a device by the author of this repository's code; everything that can be tested
@@ -20,9 +21,11 @@ without one is (see [Tests](#tests)).
 1. Decky Loader → Settings → General → turn on **Developer mode**.
 2. Settings → Developer → **Install Plugin from ZIP File** → `frame-suite.zip` from the
    [latest release](../../releases/latest).
-3. Uninstall the stand-alone Decky LSFG-VK, Decky Framegen and HelixSR Manager if you have them: two
-   copies would both write the same files. What they set up stays and is picked up (lsfg-vk and its
-   profiles, `~/fgmod`, patched games, HelixSR's downloaded releases and settings).
+3. Uninstall the stand-alone MAKO Decky, Decky LSFG-VK, Decky Framegen and HelixSR Manager if you have
+   them: two copies would both write the same files. What they set up stays and is picked up (MAKO's
+   renderer and profiles, lsfg-vk and its profiles, `~/fgmod`, patched games, HelixSR's downloaded
+   releases and settings).
+4. **Setup → MAKO → Install** once, for MAKO's renderer.
 
 Later updates arrive in the plugin itself: **Chip, versions and updates → Update**. The same page can go
 back to an earlier build.
@@ -35,8 +38,18 @@ the game, because no single method fits all:
 | The game | Boost sets up |
 |---|---|
 | DirectX 12 with DLSS, XeSS, FSR 2 or FSR 3.1 | OptiScaler with the FSR 4 runtime of your chip's profile, and HelixSR next to it if you built it |
-| any other Steam game (DirectX 11, Vulkan, …) | an lsfg-vk profile (2×, from the chosen preset) |
-| a game added to Steam by hand | nothing: use the LSFG-VK page's Non-Steam tab or HelixSR's Other Stores |
+| any other game (DirectX 11, Vulkan, added by hand, …) | **MAKO adaptive frame generation** at your chip's target (Z1 Extreme: 72 fps, at most 2× generated); lsfg-vk when MAKO's renderer is not installed |
+
+MAKO recognises a game by its running program, so switch Boost on **while the game runs** and restart it
+once. Per game you can change the frame rate on screen and the most generated frames.
+
+### MAKO's launch option, automatically
+
+MAKO starts a game through its launcher, `~/.local/bin/mako-run`, in the game's launch options. Frame Suite
+puts it there for you, right before `%command%` and after anything else on the line, for **every game
+MAKO has a profile for**, also profiles made on MAKO's own page. It takes out again what it added when the
+profile goes, or when MAKO's renderer is removed (so no game fails to start). A launcher you added yourself
+is never touched. This runs while Steam runs, also with the menu closed.
 
 - **Only one frame generator per game.** lsfg-vk and a game's own frame generation are never both set
   up by the switch, and the plugin warns when both end up active.
@@ -78,17 +91,18 @@ the FSR 4 upscaler, HelixSR, the lsfg-vk layer), read from the running process. 
 **Measure** counts the frames on screen for 20 seconds (through gamescope, generated frames included) and
 keeps the results per game, labelled with what was active, so two setups can be compared in the same scene.
 
-**Remove everything from this game** takes OptiScaler, HelixSR and the lsfg-vk profile out of one game
-and restores its files, whichever plugin put them there.
+**Remove everything from this game** takes OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile
+(and launcher) out of one game and restores its files, whichever plugin put them there.
 
 ## Setup
 
-**Setup** prepares the three parts once (nothing there touches a game):
+**Setup** prepares the four parts once (nothing there touches a game):
 
-1. lsfg-vk. You also need [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)
+1. MAKO: installs its renderer (adaptive frame generation with its own model; no Lossless Scaling needed).
+2. lsfg-vk. You also need [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)
    from Steam, switched to its `lsfg-vk` branch.
-2. OptiScaler, unpacked to `~/fgmod` with your chip's FSR 4 runtime as the default.
-3. HelixSR (optional): its newest stable release is downloaded and built by HelixSR's own setup. Up to
+3. OptiScaler, unpacked to `~/fgmod` with your chip's FSR 4 runtime as the default.
+4. HelixSR (optional): its newest stable release is downloaded and built by HelixSR's own setup. Up to
    ten minutes; keep the device plugged in.
 
 ## With the Legion Go Toolbox
@@ -98,6 +112,10 @@ Frame Suite writes what it set up per game to `~/.config/frame-suite/bridge.json
 mode and Auto TDP (2.8.0 and newer) to read: the game's method, and whether frames are multiplied, by how much and where.
 
 - **lsfg-vk games** need nothing: the Toolbox already reads lsfg-vk's own settings.
+- **MAKO games** (Toolbox 2.11.0 and newer) need nothing either. With MAKO's adaptive mode the Toolbox
+  takes MAKO's target as the frame rate on screen: Smooth mode sets the screen rate for it and only backs
+  MAKO up, Auto TDP finds the least power that keeps that target (MAKO makes up the rest with generated
+  frames), and Battery playtime moves only the power limit.
 - **OptiScaler games:** switch on **Frame generation is on in the game** when you enable frame
   generation in the game's settings. Toolbox 2.8.0 and newer follow it within seconds with Frame
   generation on *Auto*; with an older Toolbox choose 2× there by hand.
@@ -146,18 +164,27 @@ node scripts/build.mjs --test        # out/frame-suite.zip
 `python3 -m unittest discover -s tests` (the build runs them against the finished plugin):
 
 - launch-option merging and exact undo, INI editing, chip detection, the bridge file, the live check
-- the contract with the three upstream backends
+- the contract with the four upstream backends, and MAKO driven for real: its renderer installed, a profile made for a stand-in running game, the launch option added and taken out again
 - the switch end to end with the **real** upstream backends on a temporary home folder and a made-up
   Steam library: OptiScaler's real bundle is unpacked and a game is patched and restored byte for byte;
   the real lsfg-vk is installed and gets its profile
 
 Each upstream's own test suite runs as part of the build too.
 
+## The look
+
+Blue and white, in the style of MAKO's panel: the plugins and pages as a grid of tiles on the first page,
+section titles over a blue line, notes in boxes. **R1** hides and shows the explanations on Frame Suite's
+own pages (on the plugins' pages R1 stays theirs). **B** goes back to the first page.
+
 ## Credits and licenses
 
-All credit for the actual technology goes to the upstream projects: decky-lsfg-vk and Decky-Framegen by
+All credit for the actual technology goes to the upstream projects: [MAKO](https://github.com/eugeniosegala/MAKO)
+by Eugenio Segala (GPL-3.0-or-later), decky-lsfg-vk and Decky-Framegen by
 Kurt Himebauch (BSD 3-Clause), HelixSR Manager by PeroTuncay (The Unlicense), and through them
 [lsfg-vk](https://lsfg-vk.dev/) by PancakeTAS, [OptiScaler](https://github.com/optiscaler/OptiScaler),
 Nukem9's dlssg-to-fsr3, FakeMichau's fakenvapi and [HelixSR](https://github.com/lonewolf0622/HelixSR) by
 lonewolf0622. Their licenses ship inside the plugin under `upstream/<name>/`. Frame Suite's own code is
-MIT; its frame-rate probe comes from the Legion Go Toolbox.
+MIT; its frame-rate probe comes from the Legion Go Toolbox. Because it bundles MAKO, the plugin zip as a
+whole is distributed under the GPL-3.0-or-later; the complete source to build it is this repository plus
+the upstream releases pinned in `upstreams.json`.

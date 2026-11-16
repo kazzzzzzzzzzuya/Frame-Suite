@@ -22,5 +22,10 @@ SOFTWARE.
 
 This applies to Frame Suite's own code. The three plugins it bundles keep
 their own licenses, which ship next to their code in upstream/<name>/LICENSE:
-decky-lsfg-vk and Decky-Framegen (BSD 3-Clause, Kurt Himebauch) and HelixSR
-Manager (The Unlicense, PeroTuncay).
+decky-lsfg-vk and Decky-Framegen (BSD 3-Clause, Kurt Himebauch), HelixSR
+Manager (The Unlicense, PeroTuncay) and MAKO (GPL-3.0-or-later, Eugenio
+Segala). Because the plugin zip includes MAKO, the zip as a whole is
+distributed under the GNU General Public License, version 3 or later; the
+MIT terms above stay with Frame Suite's own code, which is compatible with
+it. The complete corresponding source is this repository together with the
+upstream releases pinned in upstreams.json.

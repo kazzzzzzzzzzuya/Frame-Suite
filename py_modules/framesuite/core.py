@@ -1,5 +1,5 @@
 """Frame Suite's own backend: the per-game switch, status, conflicts, setup,
-measuring and updates. Talks to the three upstream plugins only through
+measuring and updates. Talks to the upstream plugins only through
 ``adapters``."""
 
 import asyncio
@@ -1066,7 +1066,7 @@ class Suite(object):
             self.busy.pop(appid, None)
 
     async def remove_all(self, appid, launch_options):
-        """Everything the three plugins put into this game, whoever put it there."""
+        """Everything the four plugins put into this game, whoever put it there."""
         appid = str(appid)
         launch_options = launch_options or ""
         done, warnings = [], []

@@ -1,4 +1,4 @@
-"""Loads the three upstream plugins, unmodified, inside one Decky plugin.
+"""Loads the upstream plugins, unmodified, inside one Decky plugin.
 
 Each upstream ``main.py`` is imported under its own module name and sees its
 own ``decky`` module: a thin proxy over the real one. That is how HelixSR

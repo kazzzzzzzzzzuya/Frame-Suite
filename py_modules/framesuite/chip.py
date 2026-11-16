@@ -68,7 +68,7 @@ BUILTIN_GENERIC = {
     "id": GENERIC,
     "label": "Any device (upstream defaults)",
     "match": {},
-    "source": "The defaults the three plugins ship with.",
+    "source": "The defaults the bundled plugins ship with.",
     "optiscaler": {"fsr4_variant": None, "proxy_dll": "dxgi.dll", "helix": True},
     "default_preset": "balanced",
     "presets": {
