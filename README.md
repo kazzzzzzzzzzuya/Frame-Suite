@@ -27,6 +27,9 @@ without one is (see [Tests](#tests)).
    releases and settings).
 4. **Setup → MAKO → Install** once, for MAKO's renderer.
 
+The first time Frame Suite opens it shows **Getting started**: setup, Boost and the settings worth
+knowing, on one page. The button under the tiles on the first page opens it again.
+
 Later updates arrive in the plugin itself: **Chip, versions and updates → Update**. The same page can go
 back to an earlier build.
 

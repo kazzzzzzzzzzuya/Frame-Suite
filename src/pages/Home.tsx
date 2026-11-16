@@ -272,6 +272,9 @@ export function Home({ info }: { info: Info }) {
 
       <PanelSection>
         <Tiles tiles={tiles} />
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={() => nav.go("guide")}>Getting started</ButtonItem>
+        </PanelSectionRow>
       </PanelSection>
 
       {view && (view.toolbox || view.conflicts.length > 0 || (on && (route === "optiscaler" || route === "mako"))) && (

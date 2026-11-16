@@ -8,7 +8,8 @@ import lsfgPlugin from "upstream:lsfg";
 import makoPlugin from "upstream:mako";
 import optiscalerPlugin from "upstream:optiscaler";
 import { getInfo, Info } from "./backend";
-import { nav, SubId, usePage } from "./nav";
+import { guideSeen, nav, SubId, usePage } from "./nav";
+import { Guide } from "./pages/Guide";
 import { Home } from "./pages/Home";
 import { Setup } from "./pages/Setup";
 import { Versions } from "./pages/Versions";
@@ -64,7 +65,7 @@ function watchMakoLaunchOptions(): () => void {
 
 interface Upstream { content?: ReactNode; onDismount?: () => void; error?: string }
 
-const TITLES: Record<string, string> = { home: "Frame Suite", setup: "Setup", versions: "Chip, versions, updates" };
+const TITLES: Record<string, string> = { home: "Frame Suite", setup: "Setup", versions: "Chip, versions, updates", guide: "Getting started" };
 
 function Title({ names }: { names: Record<string, string> }) {
   const page = usePage();
@@ -96,7 +97,7 @@ function Title({ names }: { names: Record<string, string> }) {
 function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   const page = usePage();
   const inner = page !== "home";
-  const ours = page === "home" || page === "setup" || page === "versions";
+  const ours = page === "home" || page === "setup" || page === "versions" || page === "guide";
   const hidden = useInfoHidden();
   return (
     <Focusable
@@ -152,6 +153,7 @@ function PageContent({ page, upstream }: { page: ReturnType<typeof usePage>; ups
   }
   if (error) return <PanelSection><Note color={RED}>The plugin's backend did not answer: {error}</Note></PanelSection>;
   if (!info) return <PanelSection><Note>Loading…</Note></PanelSection>;
+  if (page === "guide") return <Guide />;
   if (page === "setup") return <Setup info={info} />;
   if (page === "versions") return <Versions info={info} onInfo={setInfo} />;
   return <Home info={info} />;
@@ -179,6 +181,8 @@ export default definePlugin(() => {
     }
   }
   const stopWatching = watchMakoLaunchOptions();
+  // The first time Frame Suite opens it starts with Getting started.
+  if (!guideSeen.get()) nav.go("guide");
   return {
     name: "Frame Suite",
     titleView: <Title names={names} />,
