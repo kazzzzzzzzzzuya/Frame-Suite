@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # GNU coreutils, as on SteamOS (MAKO's tests copy /usr/bin/env)
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
