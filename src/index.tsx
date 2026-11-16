@@ -1,6 +1,6 @@
-import { definePlugin } from "@decky/api";
+import { definePlugin, useQuickAccessVisible } from "@decky/api";
 import { DialogButton, Focusable, GamepadButton, PanelSection, staticClasses } from "@decky/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { FaLayerGroup } from "react-icons/fa";
 import helixPlugin from "upstream:helix";
@@ -107,7 +107,15 @@ function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   // (Steam's slide takes about a quarter of a second) and go back only if the panel is still there: never
   // while the menu closes. Decky's own useQuickAccessVisible does not know a QuickTab tab, so the panel's
   // own element is asked.
+  // In Decky's own tab (Decky knows it is open) B never closes the menu: straight back.
+  const deckyVisible = useQuickAccessVisible();
+  const deckyRef = useRef(deckyVisible);
+  deckyRef.current = deckyVisible;
   const goHomeSoon = () => {
+    if (deckyRef.current) {
+      nav.go("home");
+      return;
+    }
     window.setTimeout(() => {
       if (panel.shown() && nav.get() !== "home") nav.go("home");
     }, 350);
