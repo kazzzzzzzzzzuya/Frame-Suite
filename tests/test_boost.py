@@ -574,3 +574,113 @@ class OptiScaler(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless((support.have_upstreams() and support.have_binaries()) or support.REQUIRE,
+                     "needs the built plugin with its binaries (run the build)")
+class MakoWithUpscaler(Base):
+    """MAKO's frame generation and OptiScaler's FSR 4 in the same game."""
+
+    start_game = Mako.start_game
+    stop_games = Mako.stop_games
+    wrapper = Mako.wrapper
+
+    def setUp(self):
+        import shutil as _sh
+        super().setUp()
+        self.sleep = _sh.which("sleep")
+        self.suite = self.env.suite(proc="/proc")
+        self.setup_step("mako")
+        self.games = []
+        self.addCleanup(self.stop_games)
+        if not self.env.can_unpack:
+            if support.REQUIRE:
+                self.fail("7z is needed to unpack OptiScaler")
+            self.skipTest("no 7z on this machine")
+        self.suite.detected = "z1-extreme"
+        self.setup_step("optiscaler")
+        self.before = support.tree(self.dx12)
+        self.go(self.suite.set_option("1000", "route", "mako"))
+        self.go(self.suite.set_option("1000", "mako_upscale", True))
+
+    def env_ok(self, lo):
+        return launchopts.has_env(lo, {"WINEDLLOVERRIDES": "dxgi=n,b", "SteamDeck": "0"})
+
+    def test_mako_first_then_the_upscaler_then_both_out(self):
+        self.start_game("1000", "ShinyGame")
+        res = self.go(self.suite.boost_on("1000", "Shiny Game", SMOOTH, False))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["route"], "mako")
+        lo = res["launch_options"]
+        self.stop_games()
+        self.games = []
+        view = self.go(self.suite.game("1000", lo))
+        if not view["optiscaler"]["patched"]:
+            # MAKO needed the game running; the upscaler is the second step with the game closed.
+            self.assertIn("mako-upscale-pending", [c["id"] for c in view["conflicts"]])
+            res = self.go(self.suite.fix("1000", "mako-upscale-add", lo))
+            self.assertTrue(res["ok"], res)
+            lo = res["launch_options"]
+            view = res["view"]
+        self.assertTrue(view["optiscaler"]["patched"])
+        self.assertTrue(self.env_ok(lo))
+        toks = launchopts.split_tokens(lo)
+        self.assertEqual(toks[toks.index("%command%") - 1], self.wrapper())       # MAKO's launcher stays
+        self.assertTrue(lo.endswith("%command% -skipintro"))
+        self.assertTrue(os.path.isfile(os.path.join(self.dx12, "bin", "dxgi.dll")))
+        self.assertNotIn("mako-upscale-pending", [c["id"] for c in view["conflicts"]])
+        self.assertNotIn("double-fg-mako-game", [c["id"] for c in view["conflicts"]])
+        active = " · ".join(view["summary"]["active"])
+        self.assertIn("OptiScaler", active)
+        self.assertIn("MAKO adaptive", active)
+        self.assertEqual(bridge.read(self.env.home)["games"]["1000"]["frame_generation"]["source"], "mako")
+
+        # The upscaler out again: MAKO stays
+        res = self.go(self.suite.fix("1000", "mako-upscale-remove", lo))
+        self.assertTrue(res["ok"], res)
+        lo = res["launch_options"]
+        self.assertFalse(self.env_ok(lo))
+        self.assertIn(self.wrapper(), lo)
+        self.assertEqual(support.tree(self.dx12), self.before)
+        self.assertFalse(self.go(self.suite.game("1000", lo))["options"]["mako_upscale"])
+
+        # In again, then Boost off takes everything out
+        res = self.go(self.suite.fix("1000", "mako-upscale-add", lo))
+        self.assertTrue(res["ok"], res)
+        lo = res["launch_options"]
+        self.assertTrue(self.env_ok(lo))
+        res = self.go(self.suite.boost_off("1000", lo))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["launch_options"], SMOOTH)
+        self.assertEqual(support.tree(self.dx12), self.before)
+        self.assertIsNone(self.go(self.suite.ad.mako_game("1000")))
+
+    def test_with_a_profile_already_there_both_come_in_one_step(self):
+        self.start_game("1000", "ShinyGame")
+        r = self.go(self.suite.exported()["mako__capture_game_profile"]("1000", "Shiny Game"))
+        self.assertTrue(r["success"], r)
+        self.stop_games()
+        self.games = []
+        res = self.go(self.suite.boost_on("1000", "Shiny Game", "", False))
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(res["view"]["optiscaler"]["patched"])
+        self.assertTrue(self.env_ok(res["launch_options"]))
+        self.assertIn(self.wrapper(), res["launch_options"])
+        res = self.go(self.suite.boost_off("1000", res["launch_options"]))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["launch_options"], "")
+        self.assertEqual(support.tree(self.dx12), self.before)
+
+    def test_anti_cheat_is_asked_before_the_upscaler(self):
+        os.makedirs(os.path.join(self.dx12, "EasyAntiCheat"))
+        self.before = support.tree(self.dx12)
+        self.start_game("1000", "ShinyGame")
+        lo = self.go(self.suite.boost_on("1000", "Shiny Game", "", False))["launch_options"]
+        self.stop_games()
+        self.games = []
+        res = self.go(self.suite.fix("1000", "mako-upscale-add", lo))
+        self.assertTrue(res.get("need_ack"), res)
+        self.assertEqual(support.tree(self.dx12), self.before)
+        res = self.go(self.suite.fix("1000", "mako-upscale-add-ack", lo))
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(os.path.isfile(os.path.join(self.dx12, "bin", "dxgi.dll")))

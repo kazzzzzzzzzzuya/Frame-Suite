@@ -46,6 +46,21 @@ the game, because no single method fits all:
 MAKO recognises a game by its running program, so switch Boost on **while the game runs** and restart it
 once. Per game you can change the frame rate on screen and the most generated frames.
 
+### MAKO with the upscaler
+
+For a DirectX 12 game with DLSS, FSR or XeSS you can have both: OptiScaler's FSR 4 (and HelixSR, if built)
+upscaling in the game, and MAKO's frame generation on top.
+
+1. Pick the game, **Settings for this game → Method → MAKO**, and turn on **Add the upscaler (FSR 4 /
+   HelixSR)**.
+2. Start the game and turn **Boost** on: MAKO recognises the game while it runs.
+3. Close the game and choose **Add the upscaler now**: OptiScaler changes game files, so the game must be
+   closed. (If MAKO already had a profile for the game, steps 2 and 3 happen in one go with the game closed.)
+4. Start the game, choose DLSS (or FSR / XeSS) as the upscaler in its graphics settings, and keep the
+   game's own frame generation **off**: MAKO makes the extra frames.
+
+Turning the upscaler off takes OptiScaler and HelixSR out again and leaves MAKO on; Boost off takes out both.
+
 ### MAKO's launch option, automatically
 
 MAKO starts a game through its launcher, `~/.local/bin/mako-run`, in the game's launch options. Frame Suite
