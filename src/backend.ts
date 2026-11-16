@@ -24,6 +24,7 @@ export interface Measurement { fps: number; low: number | null; spread: number; 
 export interface GameOptions {
   preset: string; route: "auto" | "optiscaler" | "lsfg" | "mako"; variant: string | null; helix: boolean;
   fg_in_game: boolean; multiplier: number | null; mako_target: number | null; mako_max: number | null;
+  mako_upscale: boolean;
 }
 export interface MakoProfile {
   profile: string; frame_generation_enabled: boolean | null; adaptive: boolean | null; target_fps: number | null;

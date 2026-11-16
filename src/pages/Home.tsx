@@ -106,7 +106,13 @@ export function Home({ info }: { info: Info }) {
   }, [appid]);
 
   // A change to a game: the backend does the files, Steam's launch options are set here.
-  const change = async (title: string, call: (lo: string) => Promise<Change>, undoOnLaunchFailure = false) => {
+  const change = async (
+    title: string,
+    call: (lo: string) => Promise<Change>,
+    undoOnLaunchFailure = false,
+    // Called again after the user accepts the anti-cheat question (Boost by default).
+    acked?: (lo: string) => Promise<Change>,
+  ) => {
     if (!appid || busy) return;
     setBusy(true);
     try {
@@ -127,7 +133,7 @@ export function Home({ info }: { info: Info }) {
           "I understand the risk",
         );
         if (!ok) return;
-        res = await boostOn(appid, view?.name ?? "", lo, true);
+        res = acked ? await acked(lo) : await boostOn(appid, view?.name ?? "", lo, true);
       }
       if (!res.ok) {
         toast(title, res.error ?? "It did not work.");
@@ -295,6 +301,12 @@ export function Home({ info }: { info: Info }) {
               layout.
             </InfoBox>
           )}
+          {on && route === "mako" && !!view.boost.applied.patched && (
+            <InfoBox>
+              Upscaler with MAKO: in the game's graphics settings choose DLSS (or FSR / XeSS if it has no DLSS) as the
+              upscaler, and keep the game's own frame generation off: MAKO makes the extra frames.
+            </InfoBox>
+          )}
           {on && route === "mako" && (
             <InfoBox>
               MAKO starts with the game's next start (its launcher is in the launch options now). Every other setting
@@ -306,7 +318,13 @@ export function Home({ info }: { info: Info }) {
               <InfoBox tone={c.level === "error" ? "error" : "warn"}>{c.text}</InfoBox>
               {c.fix && (
                 <PanelSectionRow>
-                  <ButtonItem layout="below" onClick={() => change("Fix", (lo) => applyFix(view.appid, c.fix!, lo))}>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() =>
+                      change("Fix", (lo) => applyFix(view.appid, c.fix!, lo), false,
+                        c.fix === "mako-upscale-add" ? (lo) => applyFix(view.appid, "mako-upscale-add-ack", lo) : undefined)
+                    }
+                  >
                     {c.fix_label ?? "Fix"}
                   </ButtonItem>
                 </PanelSectionRow>
@@ -369,6 +387,23 @@ export function Home({ info }: { info: Info }) {
                   rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
                   selectedOption={view.options.preset}
                   onChange={(o) => option("preset", o.data)}
+                />
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ToggleField
+                  label="Add the upscaler (FSR 4 / HelixSR)"
+                  description={
+                    "OptiScaler's FSR 4" + (view.options.helix ? " and HelixSR" : "") +
+                    " in the game, with MAKO's frame generation on top: a sharper image from a lower render " +
+                    "resolution. DirectX 12 games with DLSS, FSR or XeSS. Changes the game's files: the game must be closed."
+                  }
+                  checked={view.options.mako_upscale}
+                  onChange={(v) =>
+                    on
+                      ? change("Upscaler", (lo) => applyFix(view.appid, v ? "mako-upscale-add" : "mako-upscale-remove", lo), false,
+                          v ? (lo) => applyFix(view.appid, "mako-upscale-add-ack", lo) : undefined)
+                      : option("mako_upscale", v)
+                  }
                 />
               </PanelSectionRow>
               {mk && (
