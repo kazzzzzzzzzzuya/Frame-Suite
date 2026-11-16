@@ -1,6 +1,6 @@
-import { definePlugin, useQuickAccessVisible } from "@decky/api";
+import { definePlugin } from "@decky/api";
 import { DialogButton, Focusable, GamepadButton, PanelSection, staticClasses } from "@decky/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { FaLayerGroup } from "react-icons/fa";
 import helixPlugin from "upstream:helix";
@@ -8,7 +8,7 @@ import lsfgPlugin from "upstream:lsfg";
 import makoPlugin from "upstream:mako";
 import optiscalerPlugin from "upstream:optiscaler";
 import { getInfo, Info } from "./backend";
-import { guideSeen, nav, SubId, usePage } from "./nav";
+import { guideSeen, nav, panel, SubId, usePage } from "./nav";
 import { Guide } from "./pages/Guide";
 import { Home } from "./pages/Home";
 import { Setup } from "./pages/Setup";
@@ -103,13 +103,14 @@ function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   // B can also close the whole menu (as in a QuickTab tab). Removing the page that holds the focus
   // while Steam closes the menu leaves the menu stuck on screen, so the page changes a moment later,
   // and only if the menu is still open; otherwise the panel reopens where it was.
-  const visible = useQuickAccessVisible();
-  const visibleRef = useRef(visible);
-  visibleRef.current = visible;
+  // In a QuickTab tab B may also close the whole menu. Look again once a closing menu has left the screen
+  // (Steam's slide takes about a quarter of a second) and go back only if the panel is still there: never
+  // while the menu closes. Decky's own useQuickAccessVisible does not know a QuickTab tab, so the panel's
+  // own element is asked.
   const goHomeSoon = () => {
     window.setTimeout(() => {
-      if (visibleRef.current && nav.get() !== "home") nav.go("home");
-    }, 200);
+      if (panel.shown() && nav.get() !== "home") nav.go("home");
+    }, 350);
   };
   const ours = page === "home" || page === "setup" || page === "versions" || page === "guide";
   const hidden = useInfoHidden();
@@ -135,6 +136,8 @@ function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
       onCancelActionDescription={inner ? "Back" : undefined}
     >
       <style>{STYLES}</style>
+      {/* 1 px high, so it has a size whenever the panel is on screen (see panel in nav.ts) */}
+      <div ref={(el) => panel.attach(el)} style={{ height: 1, marginBottom: -1 }} />
       <PageContent page={page} upstream={upstream} />
       {ours && <InfoHint />}
     </Focusable>

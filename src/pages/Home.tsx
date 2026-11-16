@@ -5,7 +5,7 @@ import {
   applyFix, boostOff, boostOn, Change, GameView, getGame, getGames, getLive, Info, measureClear, measureStart,
   measureStatus, MeasureStatus, removeAll, setMenuKey, setOption,
 } from "../backend";
-import { nav } from "../nav";
+import { nav, usePanelShown } from "../nav";
 import { launchOptionsExclusive, readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
 import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
 import { confirm, Header, InfoBox, Tile, Tiles, toast, when } from "../ui";
@@ -184,7 +184,10 @@ export function Home({ info }: { info: Info }) {
   };
 
   // The panel stays loaded while the menu is closed: look again whenever it is opened.
-  const visible = useQuickAccessVisible();
+  // Decky's answer, or the panel's own (a QuickTab tab: Decky does not know it).
+  const deckyVisible = useQuickAccessVisible();
+  const panelShown = usePanelShown();
+  const visible = deckyVisible || panelShown;
   useEffect(() => {
     if (visible && appid && !busy) refresh(appid);
   }, [visible]);

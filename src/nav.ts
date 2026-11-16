@@ -47,3 +47,45 @@ export function usePage(): Page {
   }, []);
   return p;
 }
+
+// Whether Frame Suite's panel is on screen. Decky's useQuickAccessVisible only knows Decky's own tab: in a
+// QuickTab tab it stays false. The panel's own element tells in both: on screen means it has a size and
+// lies inside the window (a closed menu is moved out of it).
+let panelEl: HTMLElement | null = null;
+let shown = false;
+const shownListeners = new Set<() => void>();
+function checkShown(): boolean {
+  let v = false;
+  if (panelEl && panelEl.isConnected && document.visibilityState !== "hidden") {
+    const r = panelEl.getBoundingClientRect();
+    v = r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 &&
+      r.left < window.innerWidth && r.top < window.innerHeight;
+  }
+  if (v !== shown) {
+    shown = v;
+    shownListeners.forEach((l) => l());
+  }
+  return v;
+}
+export const panel = {
+  attach(el: HTMLElement | null) {
+    panelEl = el;
+    checkShown();
+  },
+  shown: checkShown,
+};
+
+export function usePanelShown(): boolean {
+  const [v, setV] = useState(shown);
+  useEffect(() => {
+    const l = () => setV(shown);
+    shownListeners.add(l);
+    const timer = setInterval(checkShown, 500);
+    l();
+    return () => {
+      shownListeners.delete(l);
+      clearInterval(timer);
+    };
+  }, []);
+  return v;
+}
