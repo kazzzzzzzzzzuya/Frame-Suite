@@ -56,10 +56,14 @@ let shown = false;
 const shownListeners = new Set<() => void>();
 function checkShown(): boolean {
   let v = false;
-  if (panelEl && panelEl.isConnected && document.visibilityState !== "hidden") {
+  // Steam draws the Quick Access menu in a window of its own, not the one this code runs in: ask the
+  // panel's own document and window.
+  const doc = panelEl?.ownerDocument;
+  const win = doc?.defaultView;
+  if (panelEl && panelEl.isConnected && doc && win && doc.visibilityState !== "hidden") {
     const r = panelEl.getBoundingClientRect();
     v = r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 &&
-      r.left < window.innerWidth && r.top < window.innerHeight;
+      r.left < win.innerWidth && r.top < win.innerHeight;
   }
   if (v !== shown) {
     shown = v;
