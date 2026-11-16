@@ -601,7 +601,7 @@ class MakoWithUpscaler(Base):
         self.setup_step("optiscaler")
         self.before = support.tree(self.dx12)
         self.go(self.suite.set_option("1000", "route", "mako"))
-        self.go(self.suite.set_option("1000", "mako_upscale", True))
+        self.go(self.suite.set_option("1000", "mako_upscaler", "optiscaler"))
 
     def env_ok(self, lo):
         return launchopts.has_env(lo, {"WINEDLLOVERRIDES": "dxgi=n,b", "SteamDeck": "0"})
@@ -642,10 +642,10 @@ class MakoWithUpscaler(Base):
         self.assertFalse(self.env_ok(lo))
         self.assertIn(self.wrapper(), lo)
         self.assertEqual(support.tree(self.dx12), self.before)
-        self.assertFalse(self.go(self.suite.game("1000", lo))["options"]["mako_upscale"])
+        self.assertEqual(self.go(self.suite.game("1000", lo))["options"]["mako_upscaler"], "off")
 
-        # In again, then Boost off takes everything out
-        res = self.go(self.suite.fix("1000", "mako-upscale-add", lo))
+        # In again (chosen from the list), then Boost off takes everything out
+        res = self.go(self.suite.fix("1000", "mako-upscaler:optiscaler", lo))
         self.assertTrue(res["ok"], res)
         lo = res["launch_options"]
         self.assertTrue(self.env_ok(lo))
@@ -684,3 +684,35 @@ class MakoWithUpscaler(Base):
         res = self.go(self.suite.fix("1000", "mako-upscale-add-ack", lo))
         self.assertTrue(res["ok"], res)
         self.assertTrue(os.path.isfile(os.path.join(self.dx12, "bin", "dxgi.dll")))
+
+    def test_switching_upscalers_takes_out_the_old_one_first(self):
+        self.start_game("1000", "ShinyGame")
+        lo = self.go(self.suite.boost_on("1000", "Shiny Game", "", False))["launch_options"]
+        self.stop_games()
+        self.games = []
+        res = self.go(self.suite.fix("1000", "mako-upscaler:optiscaler", lo))
+        self.assertTrue(res["ok"], res)
+        lo = res["launch_options"]
+        self.assertTrue(self.env_ok(lo))
+        # HelixSR in place of the game's FSR: this test game has no FSR 3.1 file, so it is refused, and
+        # OptiScaler has been taken out cleanly first; MAKO stays.
+        res = self.go(self.suite.fix("1000", "mako-upscaler:direct", lo))
+        self.assertFalse(res["ok"])
+        lo = res["launch_options"]
+        self.assertFalse(self.env_ok(lo))
+        self.assertIn(self.wrapper(), lo)
+        self.assertEqual(support.tree(self.dx12), self.before)
+        view = self.go(self.suite.game("1000", lo))
+        self.assertEqual(view["options"]["mako_upscaler"], "direct")
+        self.assertIn("mako-upscale-pending", [c["id"] for c in view["conflicts"]])
+        res = self.go(self.suite.fix("1000", "mako-upscaler:off", lo))
+        self.assertTrue(res["ok"], res)
+        self.assertNotIn("mako-upscale-pending", [c["id"] for c in res["view"]["conflicts"]])
+        res = self.go(self.suite.boost_off("1000", res["launch_options"]))
+        self.assertEqual(res["launch_options"], "")
+
+    def test_the_old_on_off_choice_still_counts(self):
+        entry = self.suite.store.game("1000", create=True)
+        entry["options"] = {"mako_upscale": True}
+        self.assertEqual(self.suite.options("1000")["mako_upscaler"], "optiscaler")
+        self.assertFalse(self.go(self.suite.set_option("1000", "mako_upscaler", "nonsense"))["ok"])

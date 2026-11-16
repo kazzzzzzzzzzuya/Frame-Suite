@@ -71,3 +71,12 @@ export async function writeLaunchOptions(appId: string, options: string): Promis
   }
   throw new Error("Steam did not take the new launch options");
 }
+
+// Launch options are read, changed and written back in several places (a Boost change, MAKO's launcher
+// watcher). One at a time, so no writer puts back an older copy over another's change.
+let launchQueue: Promise<unknown> = Promise.resolve();
+export function launchOptionsExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = launchQueue.then(fn, fn);
+  launchQueue = run.catch(() => undefined);
+  return run;
+}

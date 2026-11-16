@@ -6,7 +6,7 @@ import {
   measureStatus, MeasureStatus, removeAll, setMenuKey, setOption,
 } from "../backend";
 import { nav } from "../nav";
-import { readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
+import { launchOptionsExclusive, readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
 import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
 import { confirm, Header, InfoBox, Tile, Tiles, toast, when } from "../ui";
 
@@ -27,6 +27,14 @@ async function launchOptions(appid: string): Promise<string | null> {
     return null;
   }
 }
+
+const UPSCALER_HELP: Record<string, string> = {
+  off: "MAKO's frame generation only; the game renders at its own resolution.",
+  optiscaler:
+    "OptiScaler's FSR 4 in the game (as Decky-Framegen does it), HelixSR in its menu if built. DirectX 12 games with DLSS, FSR or XeSS.",
+  scaler: "HelixSR Scaler (HelixSR's own OptiScaler with HLX DLSS), as HelixSR Manager does it. Needs a HelixSR 3.x release built in Setup.",
+  direct: "HelixSR takes the place of the game's own FSR 3.1 file, as HelixSR Manager does it. Games with FSR 3.1 on DirectX 12.",
+};
 
 export function Home({ info }: { info: Info }) {
   const [games, setGames] = useState<Game[]>([]);
@@ -106,7 +114,14 @@ export function Home({ info }: { info: Info }) {
   }, [appid]);
 
   // A change to a game: the backend does the files, Steam's launch options are set here.
-  const change = async (
+  // One at a time with MAKO's launcher watcher: both read, change and write the launch options.
+  const change = (
+    title: string,
+    call: (lo: string) => Promise<Change>,
+    undoOnLaunchFailure = false,
+    acked?: (lo: string) => Promise<Change>,
+  ) => launchOptionsExclusive(() => changeNow(title, call, undoOnLaunchFailure, acked));
+  const changeNow = async (
     title: string,
     call: (lo: string) => Promise<Change>,
     undoOnLaunchFailure = false,
@@ -301,10 +316,12 @@ export function Home({ info }: { info: Info }) {
               layout.
             </InfoBox>
           )}
-          {on && route === "mako" && !!view.boost.applied.patched && (
+          {on && route === "mako" && !!view.boost.applied.upscaler && (
             <InfoBox>
-              Upscaler with MAKO: in the game's graphics settings choose DLSS (or FSR / XeSS if it has no DLSS) as the
-              upscaler, and keep the game's own frame generation off: MAKO makes the extra frames.
+              {`Upscaler with MAKO: in the game's graphics settings choose ${
+                view.boost.applied.upscaler === "direct" ? "FSR" :
+                  view.boost.applied.upscaler === "scaler" ? "DLSS" : "DLSS (or FSR / XeSS if it has no DLSS)"
+              } as the upscaler, and keep the game's own frame generation off: MAKO makes the extra frames.`}
             </InfoBox>
           )}
           {on && route === "mako" && (
@@ -390,22 +407,41 @@ export function Home({ info }: { info: Info }) {
                 />
               </PanelSectionRow>
               <PanelSectionRow>
-                <ToggleField
-                  label="Add the upscaler (FSR 4 / HelixSR)"
+                <DropdownItem
+                  label="Upscaler with MAKO"
                   description={
-                    "OptiScaler's FSR 4" + (view.options.helix ? " and HelixSR" : "") +
-                    " in the game, with MAKO's frame generation on top: a sharper image from a lower render " +
-                    "resolution. DirectX 12 games with DLSS, FSR or XeSS. Changes the game's files: the game must be closed."
+                    UPSCALER_HELP[view.options.mako_upscaler] +
+                    (view.options.mako_upscaler === "off" ? "" : " Changes the game's files: the game must be closed.")
                   }
-                  checked={view.options.mako_upscale}
-                  onChange={(v) =>
-                    on
-                      ? change("Upscaler", (lo) => applyFix(view.appid, v ? "mako-upscale-add" : "mako-upscale-remove", lo), false,
-                          v ? (lo) => applyFix(view.appid, "mako-upscale-add-ack", lo) : undefined)
-                      : option("mako_upscale", v)
-                  }
+                  rgOptions={[
+                    { data: "off", label: "Off: MAKO alone" },
+                    { data: "optiscaler", label: "FSR 4 (OptiScaler, Framegen)" },
+                    { data: "scaler", label: "HelixSR Scaler" },
+                    { data: "direct", label: "HelixSR in place of the game's FSR" },
+                  ]}
+                  selectedOption={view.options.mako_upscaler}
+                  onChange={(o) => {
+                    const mode = o.data as string;
+                    if (!on) return void option("mako_upscaler", mode);
+                    void change("Upscaler", (lo) => applyFix(view.appid, `mako-upscaler:${mode}`, lo), false,
+                      (lo) => applyFix(view.appid, `mako-upscaler-ack:${mode}`, lo));
+                  }}
                 />
               </PanelSectionRow>
+              {view.options.mako_upscaler === "optiscaler" && (
+                <PanelSectionRow>
+                  <ToggleField
+                    label="Add HelixSR to OptiScaler"
+                    description={
+                      view.helix.built
+                        ? "HelixSR's upscaler next to FSR 4 in OptiScaler's menu. Applies the next time the upscaler is put in."
+                        : "HelixSR is not built yet (Setup). Until then only FSR 4 is added."
+                    }
+                    checked={view.options.helix}
+                    onChange={(v) => option("helix", v)}
+                  />
+                </PanelSectionRow>
+              )}
               {mk && (
                 <InfoBox tone="info">
                   {`MAKO's profile "${mk.profile}": ${

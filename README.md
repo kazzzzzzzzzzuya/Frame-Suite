@@ -46,20 +46,23 @@ the game, because no single method fits all:
 MAKO recognises a game by its running program, so switch Boost on **while the game runs** and restart it
 once. Per game you can change the frame rate on screen and the most generated frames.
 
-### MAKO with the upscaler
+### MAKO with an upscaler
 
-For a DirectX 12 game with DLSS, FSR or XeSS you can have both: OptiScaler's FSR 4 (and HelixSR, if built)
-upscaling in the game, and MAKO's frame generation on top.
+Under MAKO's frame generation the game can also get an upscaler. **Settings for this game → Upscaler with
+MAKO** offers the same choices as the separate plugins:
 
-1. Pick the game, **Settings for this game → Method → MAKO**, and turn on **Add the upscaler (FSR 4 /
-   HelixSR)**.
-2. Start the game and turn **Boost** on: MAKO recognises the game while it runs.
-3. Close the game and choose **Add the upscaler now**: OptiScaler changes game files, so the game must be
-   closed. (If MAKO already had a profile for the game, steps 2 and 3 happen in one go with the game closed.)
-4. Start the game, choose DLSS (or FSR / XeSS) as the upscaler in its graphics settings, and keep the
-   game's own frame generation **off**: MAKO makes the extra frames.
+| Choice | What goes into the game | In the game, choose |
+|---|---|---|
+| Off | nothing: MAKO alone | – |
+| FSR 4 (OptiScaler, Framegen) | OptiScaler with FSR 4, as Decky-Framegen does it; HelixSR in its menu if built and "Add HelixSR to OptiScaler" is on | DLSS (or FSR / XeSS) |
+| HelixSR Scaler | HelixSR's own OptiScaler with HLX DLSS, as HelixSR Manager does it (needs a HelixSR 3.x release built in Setup) | DLSS |
+| HelixSR in place of the game's FSR | HLX FSR 4 replaces the game's FSR 3.1 file, as HelixSR Manager does it | FSR |
 
-Turning the upscaler off takes OptiScaler and HelixSR out again and leaves MAKO on; Boost off takes out both.
+All of them are for DirectX 12 games and change game files, so the game must be closed. MAKO needs it
+running the first time, to recognise it: turn Boost on while it runs, close it, and choose **Add the
+upscaler now**. With a MAKO profile already there, both go in at once. Changing the choice takes the old
+upscaler out before the new one goes in; Boost off takes out everything. Keep the game's own frame
+generation off: MAKO makes the extra frames.
 
 ### MAKO's launch option, automatically
 

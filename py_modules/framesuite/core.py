@@ -16,6 +16,9 @@ import time
 from . import adapters, bridge, chip, host, ini, launchopts, live, toolbox
 
 ROUTES = ("optiscaler", "lsfg", "mako")
+UPSCALERS = ("off", "optiscaler", "scaler", "direct")
+UPSCALER_NAMES = {"off": "none", "optiscaler": "FSR 4 through OptiScaler", "scaler": "HelixSR Scaler",
+                  "direct": "HelixSR in place of the game's FSR"}
 MAKO_TARGETS = (30, 36, 40, 45, 48, 60, 72, 90, 120, 144)
 MENU_KEYS = [  # Windows virtual-key codes OptiScaler understands
     {"code": "auto", "label": "Insert (OptiScaler's default)"},
@@ -223,8 +226,10 @@ class Suite(object):
             "multiplier": int(o["multiplier"]) if str(o.get("multiplier", "")).isdigit() else None,
             "mako_target": int(o["mako_target"]) if o.get("mako_target") in MAKO_TARGETS else None,
             "mako_max": int(o["mako_max"]) if o.get("mako_max") in (2, 3, 4) else None,
-            # MAKO's frame generation plus OptiScaler's FSR 4 (and HelixSR) upscaling in the game.
-            "mako_upscale": bool(o.get("mako_upscale", False)),
+            # The upscaler under MAKO's frame generation: off, OptiScaler's FSR 4 (Decky-Framegen, HelixSR in
+            # it when "helix"), HelixSR Scaler, or HelixSR in place of the game's FSR 3.1 (as HelixSR Manager).
+            "mako_upscaler": o["mako_upscaler"] if o.get("mako_upscaler") in UPSCALERS else
+            ("optiscaler" if o.get("mako_upscale") else "off"),
         }
 
     def mako_config_for(self, appid):
@@ -248,10 +253,12 @@ class Suite(object):
 
     async def set_option(self, appid, key, value, launch_options=None):
         if key not in ("preset", "route", "variant", "helix", "fg_in_game", "multiplier", "mako_target", "mako_max",
-                       "mako_upscale"):
+                       "mako_upscaler"):
             return {"ok": False, "error": "Unknown option."}
         entry = self.store.game(appid, create=True)
-        if value in (None, "", "auto") and key not in ("helix", "fg_in_game", "mako_upscale"):
+        if key == "mako_upscaler" and value not in UPSCALERS:
+            return {"ok": False, "error": "Unknown upscaler."}
+        if value in (None, "", "auto") and key not in ("helix", "fg_in_game", "mako_upscaler"):
             entry["options"].pop(key, None)
         else:
             entry["options"][key] = value
@@ -430,12 +437,13 @@ class Suite(object):
             out.append({"id": "mako-launch-missing", "level": "warn", "fix": "mako-launch-add", "fix_label": "Add it now",
                         "text": "MAKO has a profile for this game, but its launcher is not in the launch options yet "
                                 "(Frame Suite adds it within seconds; without it the game starts without MAKO)."})
-        if boost.get("on") and boost.get("route") == "mako" and opts["mako_upscale"] \
-                and not (boost.get("applied") or {}).get("patched") and not patched:
+        if boost.get("on") and boost.get("route") == "mako" and opts["mako_upscaler"] != "off" \
+                and not (boost.get("applied") or {}).get("upscaler") \
+                and not (opts["mako_upscaler"] == "optiscaler" and patched):
             out.append({"id": "mako-upscale-pending", "level": "warn", "fix": "mako-upscale-add",
                         "fix_label": "Add the upscaler now",
-                        "text": "The upscaler (FSR 4%s) is not in the game yet. Close the game first: its files "
-                                "cannot be changed while it runs." % (" and HelixSR" if opts["helix"] else "")})
+                        "text": "The upscaler (%s) is not in the game yet. Close the game first: its files cannot be "
+                                "changed while it runs." % UPSCALER_NAMES[opts["mako_upscaler"]]})
         if boost.get("on") and boost.get("route") == "mako" and not mprof:
             out.append({"id": "boost-lost", "level": "error", "fix": "boost-reapply", "fix_label": "Set it up again",
                         "text": "The switch is on, but MAKO has no profile for this game any more."})
@@ -910,14 +918,14 @@ class Suite(object):
         applied, warnings, done = {}, [], []
         new_lo, added = launch_options, []
 
-        upscale = route == "mako" and opts["mako_upscale"]
+        upscale = route == "mako" and opts["mako_upscaler"] != "off"
         if route == "optiscaler" or (upscale and not f["hx"].get("running")):
             # The anti-cheat question comes first, before anything is changed.
             asked = await self._anticheat_ack(appid, f, ack)
             if asked:
                 return asked
         if route == "optiscaler":
-            res = await self._upscaler_in(appid, f, opts, launch_options, applied, warnings, done)
+            res = await self._upscaler_in(appid, f, opts, "optiscaler", launch_options, applied, warnings, done)
             if not res["ok"]:
                 return res
             new_lo, added = res["launch_options"], res["added"]
@@ -951,7 +959,7 @@ class Suite(object):
                 warnings.append("The upscaler is added once the game is closed: close it, then choose "
                                 "\"Add the upscaler now\" on Frame Suite's page.")
             elif upscale:
-                res = await self._upscaler_in(appid, f, opts, new_lo, applied, warnings, done)
+                res = await self._upscaler_in(appid, f, opts, opts["mako_upscaler"], new_lo, applied, warnings, done)
                 if res["ok"]:
                     new_lo, added = res["launch_options"], res["added"]
                 else:
@@ -993,8 +1001,13 @@ class Suite(object):
             await self._safe(self.ad.helix_ack(appid, True), None)
         return None
 
-    async def _upscaler_in(self, appid, f, opts, launch_options, applied, warnings, done):
-        """OptiScaler (FSR 4) into the game's files, HelixSR next to it if wanted, and the launch settings."""
+    async def _upscaler_in(self, appid, f, opts, mode, launch_options, applied, warnings, done):
+        """An upscaler into the game's files, and the launch settings it needs:
+        "optiscaler": OptiScaler (FSR 4) by Decky-Framegen, HelixSR next to it if wanted;
+        "scaler": HelixSR Scaler (HelixSR's own OptiScaler with HLX DLSS);
+        "direct": HelixSR in place of the game's own FSR 3.1 file."""
+        if mode in ("scaler", "direct"):
+            return await self._helix_mode_in(appid, mode, launch_options, applied, done)
         og = f["og"]
         dll = og.get("dll") if og.get("patched") else (self.profile().get("optiscaler") or {}).get("proxy_dll")
         if dll not in self.ad.og_valid_dlls():
@@ -1014,10 +1027,65 @@ class Suite(object):
             new_lo, added = launchopts.add_env(launch_options, env)
         if opts["helix"]:
             await self._helix_into_game(appid, f, applied, warnings, done)
+        applied["upscaler"] = "optiscaler"
+        return {"ok": True, "launch_options": new_lo, "added": added}
+
+    async def _helix_mode_in(self, appid, mode, launch_options, applied, done):
+        if not self.ad.has("helix"):
+            return {"ok": False, "error": "The HelixSR part did not load in this build."}
+        hx = await self._safe(self.ad.helix_game(appid), {"ok": False})
+        if not hx.get("ok"):
+            return {"ok": False, "error": "HelixSR could not read the game's files%s."
+                                          % (": " + hx["error"] if hx.get("error") else "")}
+        if mode == "direct":
+            targets = [d["path"] for d in hx["direct"] if not d["dx11"]
+                       and not str(d.get("state", "")).startswith("helixsr") and d.get("state") != "disabled"]
+            if not targets:
+                return {"ok": False, "error": "The game has no FSR 3.1 file (DirectX 12) that HelixSR can take the "
+                                              "place of. Use HelixSR Scaler or FSR 4 instead."}
+            paths = []
+            for t in targets:
+                res = await self._safe(self.ad.helix_install_direct(t), {"ok": False, "message": "no answer"})
+                if not res["ok"]:
+                    for p in paths:
+                        await self._safe(self.ad.helix_uninstall_direct(p), None)
+                    return {"ok": False, "error": res["message"] or "HelixSR could not be put in."}
+                paths.append(t)
+            applied["direct"] = paths
+            applied["upscaler"] = "direct"
+            done.append("HelixSR is in place of the game's own FSR: choose FSR in the game's graphics settings.")
+            return {"ok": True, "launch_options": launch_options, "added": []}
+        if not hx.get("path"):
+            return {"ok": False, "error": "The game's folder was not found."}
+        res = await self._safe(self.ad.helix_install_scaler(hx["path"]), {"ok": False, "message": "no answer"})
+        if not res["ok"]:
+            return {"ok": False, "error": res["message"] or "HelixSR Scaler could not be put in."}
+        applied["scaler"] = hx["path"]
+        applied["upscaler"] = "scaler"
+        done.append(res["message"] or "HelixSR Scaler installed. In the game, select DLSS.")
+        # It needs a launch setting only under another name than dxgi.dll.
+        after = await self._safe(self.ad.helix_game(appid), {"ok": False})
+        launch = next((o.get("scaler_launch") for o in after.get("optis") or [] if o.get("scaler_launch")), None)
+        new_lo, added = launch_options, []
+        if launch:
+            new_lo, added = launchopts.add_env(launch_options, dict(launchopts.parse_env(launch + " %command%")))
         return {"ok": True, "launch_options": new_lo, "added": added}
 
     async def _upscaler_out(self, appid, applied, launch_options, lo_added, done, warnings):
-        """Takes out what _upscaler_in put in: HelixSR, OptiScaler, and their launch settings."""
+        """Takes out what _upscaler_in put in, and its launch settings."""
+        for p in applied.get("direct") or []:
+            res = await self._safe(self.ad.helix_uninstall_direct(p), {"ok": False, "message": "no answer"})
+            if not res["ok"]:
+                return {"ok": False, "error": "HelixSR could not be taken out: %s" % res["message"]}
+            done.append("The game's own FSR is back.")
+        applied.pop("direct", None)
+        if applied.get("scaler"):
+            res = await self._safe(self.ad.helix_uninstall_scaler(applied["scaler"]), {"ok": False, "message": "no answer"})
+            if not res["ok"]:
+                return {"ok": False, "error": "HelixSR Scaler could not be taken out: %s" % res["message"]}
+            done.append(res["message"] or "HelixSR Scaler removed.")
+            applied.pop("scaler", None)
+            launch_options = launchopts.remove_env(launch_options, lo_added)
         for d in applied.get("helix") or []:
             res = await self._safe(self.ad.helix_uninstall(d), {"ok": False, "message": "no answer"})
             (done if res["ok"] else warnings).append(
@@ -1030,6 +1098,7 @@ class Suite(object):
             done.append(res["message"] or "OptiScaler removed.")
             applied.pop("patched", None)
             launch_options = launchopts.remove_env(launch_options, lo_added)
+        applied.pop("upscaler", None)
         return {"ok": True, "launch_options": launch_options}
 
     async def _helix_into_game(self, appid, f, applied, warnings, done):
@@ -1074,19 +1143,13 @@ class Suite(object):
         self.busy[appid] = True
         try:
             applied, done, warnings = boost.get("applied") or {}, [], []
-            if applied.get("patched") or applied.get("helix"):
+            if any(applied.get(k) for k in ("patched", "helix", "direct", "scaler")):
                 hx = await self._safe(self.ad.helix_game(appid), {"ok": False})
                 if hx.get("ok") and hx.get("running"):
                     return {"ok": False, "error": "Close the game first: its files cannot be changed while it runs."}
-            for d in applied.get("helix") or []:
-                res = await self._safe(self.ad.helix_uninstall(d), {"ok": False, "message": "no answer"})
-                (done if res["ok"] else warnings).append(
-                    "HelixSR removed." if res["ok"] else "HelixSR could not be removed: %s" % res["message"])
-            if applied.get("patched"):
-                res = await self.ad.og_unpatch(appid)
-                if not res["ok"]:
-                    return {"ok": False, "error": res["message"] or "Decky-Framegen could not restore the game."}
-                done.append(res["message"] or "OptiScaler removed.")
+            res = await self._upscaler_out(appid, dict(applied), launch_options, None, done, warnings)
+            if not res["ok"]:
+                return res
             if applied.get("lsfg") == "created":
                 res = await self.ad.lsfg_reset(appid)
                 (done if res["ok"] else warnings).append(
@@ -1101,10 +1164,8 @@ class Suite(object):
                 await self.mako_sync(force=True)
             if launch_options == boost.get("lo_after"):
                 new_lo = boost.get("lo_before") or ""
-            elif applied.get("patched") or applied.get("wrapper"):
-                new_lo = launch_options
-                if applied.get("patched"):
-                    new_lo = launchopts.remove_env(new_lo, boost.get("lo_added"))
+            elif boost.get("lo_added") or applied.get("wrapper"):
+                new_lo = launchopts.remove_env(launch_options, boost.get("lo_added"))
                 if applied.get("wrapper"):
                     new_lo = launchopts.remove_wrapper(new_lo, adapters.MAKO_RUN)
             else:
@@ -1131,9 +1192,18 @@ class Suite(object):
             hx = await self._safe(self.ad.helix_game(appid), {"ok": False})
             if hx.get("ok") and hx.get("running"):
                 return {"ok": False, "error": "Close the game first: its files cannot be changed while it runs."}
+            scaler_env = []
             if hx.get("ok"):
+                scalers = [o for o in hx["optis"] if o.get("scaler_version")]
+                if scalers and hx.get("path"):
+                    res = await self._safe(self.ad.helix_uninstall_scaler(hx["path"]), {"ok": False, "message": "no answer"})
+                    (done if res["ok"] else warnings).append(
+                        (res["message"] or "HelixSR Scaler removed.") if res["ok"] else "HelixSR Scaler: %s" % res["message"])
+                    for o in scalers:
+                        if res["ok"] and o.get("scaler_launch"):
+                            scaler_env += [[k, v, None] for k, v in launchopts.parse_env(o["scaler_launch"] + " %command%")]
                 for o in hx["optis"]:
-                    if o["kind"] in ("ffx", "ngx"):
+                    if o["kind"] in ("ffx", "ngx") and not o.get("scaler_version"):
                         res = await self._safe(self.ad.helix_uninstall(o["dir"]), {"ok": False, "message": "no answer"})
                         (done if res["ok"] else warnings).append(
                             "HelixSR removed from OptiScaler." if res["ok"] else "HelixSR: %s" % res["message"])
@@ -1144,7 +1214,7 @@ class Suite(object):
                         (done if res["ok"] else warnings).append(
                             "The game's own FSR 3.1 restored." if res["ok"] else "HelixSR: %s" % res["message"])
             og = await self._safe(self.ad.og_status(appid), {"patched": False})
-            new_lo = launch_options
+            new_lo = launchopts.remove_env(launch_options, scaler_env) if scaler_env else launch_options
             if og.get("patched"):
                 env = self.ad.og_env(og.get("dll") or "dxgi.dll")
                 res = await self.ad.og_unpatch(appid)
@@ -1215,9 +1285,14 @@ class Suite(object):
                     if not re.search(r"(^|/)fgmod(-uninstaller\.sh)?$", t.strip("'\""))]
             new_lo = " ".join(toks)
             message = "Wrapper removed from the launch options."
-        elif fix_id in ("mako-upscale-add", "mako-upscale-add-ack", "mako-upscale-remove"):
-            return await self._mako_upscale(appid, fix_id != "mako-upscale-remove", launch_options,
-                                            fix_id == "mako-upscale-add-ack")
+        elif fix_id in ("mako-upscale-add", "mako-upscale-add-ack"):
+            return await self._mako_upscale(appid, self.options(appid)["mako_upscaler"], launch_options,
+                                            fix_id.endswith("-ack"))
+        elif fix_id == "mako-upscale-remove":
+            return await self._mako_upscale(appid, "off", launch_options)
+        elif fix_id.startswith(("mako-upscaler:", "mako-upscaler-ack:")):
+            return await self._mako_upscale(appid, fix_id.split(":", 1)[1], launch_options,
+                                            fix_id.startswith("mako-upscaler-ack:"))
         elif fix_id == "boost-reapply":
             entry = self.store.game(appid)
             if entry:
@@ -1231,10 +1306,14 @@ class Suite(object):
         return {"ok": True, "launch_options": new_lo, "launch_changed": new_lo != launch_options,
                 "done": [message] if message else [], "warnings": [], "view": view}
 
-    async def _mako_upscale(self, appid, on, launch_options, ack=False):
-        """Adds or takes out the upscaler while MAKO's Boost is on; the choice is kept for the next Boost."""
+    async def _mako_upscale(self, appid, mode, launch_options, ack=False):
+        """Sets the upscaler under MAKO (see options()). While MAKO's Boost is on, the one in the game is changed
+        to it at once (the game must be closed); otherwise it is kept for the next Boost."""
+        if mode not in UPSCALERS:
+            return {"ok": False, "error": "Unknown upscaler."}
         entry = self.store.game(appid, create=True)
-        entry["options"]["mako_upscale"] = bool(on)
+        entry["options"]["mako_upscaler"] = mode
+        entry["options"].pop("mako_upscale", None)
         self.store.save()
         boost = entry.get("boost") or {}
         if not (boost.get("on") and boost.get("route") == "mako"):
@@ -1245,36 +1324,40 @@ class Suite(object):
             return {"ok": False, "error": "A change for this game is still running."}
         self.busy[appid] = True
         try:
-            f = await self._facts(appid)
             applied, done, warnings = boost.setdefault("applied", {}), [], []
-            has = applied.get("patched") or applied.get("helix")
-            if (on and not has) or (not on and has):
+            current = applied.get("upscaler") or "off"
+            new_lo = launch_options
+            if current != mode:
+                f = await self._facts(appid)
                 if f["hx"].get("running"):
                     # The choice is kept; the page offers the step again once the game is closed.
                     view = await self.game(appid, launch_options, entry.get("name"))
                     return {"ok": True, "launch_options": launch_options, "launch_changed": False, "done": [],
                             "warnings": ["Close the game first: its files cannot be changed while it runs. "
                                          "The choice is saved."], "view": view}
-            new_lo = launch_options
-            if on and not has:
-                if f["og"].get("patched"):
-                    done.append("OptiScaler is already in the game.")
-                else:
+                if mode != "off":
                     asked = await self._anticheat_ack(appid, f, ack)
                     if asked:
                         return asked
-                    res = await self._upscaler_in(appid, f, self.options(appid), launch_options, applied,
-                                                  warnings, done)
+                if current != "off":
+                    res = await self._upscaler_out(appid, applied, launch_options, boost.get("lo_added"),
+                                                   done, warnings)
                     if not res["ok"]:
                         return res
                     new_lo = res["launch_options"]
+                    boost["lo_added"] = []
+                    self.store.save()
+                if mode != "off":
+                    f = await self._facts(appid)        # what the game has now
+                    res = await self._upscaler_in(appid, f, self.options(appid), mode, new_lo, applied,
+                                                  warnings, done)
+                    if not res["ok"]:
+                        boost["lo_after"] = new_lo
+                        self.store.save()
+                        res["launch_options"], res["launch_changed"] = new_lo, new_lo != launch_options
+                        return res
+                    new_lo = res["launch_options"]
                     boost["lo_added"] = list(boost.get("lo_added") or []) + list(res["added"])
-            elif not on and has:
-                res = await self._upscaler_out(appid, applied, launch_options, boost.get("lo_added"), done, warnings)
-                if not res["ok"]:
-                    return res
-                new_lo = res["launch_options"]
-                boost["lo_added"] = []
             boost["lo_after"] = new_lo
             self.store.save()
             view = await self.game(appid, new_lo, entry.get("name"))

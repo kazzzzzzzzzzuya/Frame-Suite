@@ -15,7 +15,7 @@ import { Setup } from "./pages/Setup";
 import { Versions } from "./pages/Versions";
 import { BLUE, InfoHint, infoVisibility, Note, RED, STYLES, useInfoHidden } from "./ui";
 import { makoLaunchFix, makoLaunchMark, makoLaunchPlan } from "./backend";
-import { readLaunchOptions, writeLaunchOptions } from "./steam";
+import { launchOptionsExclusive, readLaunchOptions, writeLaunchOptions } from "./steam";
 
 /** MAKO starts a game through its launcher (mako-run) in the game's launch options. Frame Suite puts it
  *  there by itself for every game MAKO has a profile for, also one made on MAKO's own page, and takes
@@ -35,22 +35,25 @@ function watchMakoLaunchOptions(): () => void {
       lastPlan = key;
       lastFull = Date.now();
       for (const appid of new Set([...plan.want, ...plan.ours])) {
-        let current: string;
-        try {
-          current = await readLaunchOptions(appid);
-        } catch {
-          lastPlan = ""; // Steam did not answer: look again next time
-          continue;
-        }
-        const fix = await makoLaunchFix(appid, current);
-        if (!fix.changed) continue;
-        try {
-          await writeLaunchOptions(appid, fix.launch_options);
-          await makoLaunchMark(appid, fix.ours);
-        } catch (e) {
-          lastPlan = "";
-          console.warn(`[Frame Suite] launch options of ${appid}`, e);
-        }
+        // Read and write as one step, never between another change's read and write.
+        await launchOptionsExclusive(async () => {
+          let current: string;
+          try {
+            current = await readLaunchOptions(appid);
+          } catch {
+            lastPlan = ""; // Steam did not answer: look again next time
+            return;
+          }
+          const fix = await makoLaunchFix(appid, current);
+          if (!fix.changed) return;
+          try {
+            await writeLaunchOptions(appid, fix.launch_options);
+            await makoLaunchMark(appid, fix.ours);
+          } catch (e) {
+            lastPlan = "";
+            console.warn(`[Frame Suite] launch options of ${appid}`, e);
+          }
+        });
       }
     } catch {
       /* backend not ready yet */
