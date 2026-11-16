@@ -22,8 +22,8 @@
     "helix": {
       "title": "HelixSR Manager",
       "repo": "PeroTuncay/DeckyHelixSRManager",
-      "tag": "v0.11.3",
-      "commit": "949949f91220d4d0685237e3596eb43167a0bce4"
+      "tag": "v0.13.0",
+      "commit": "56c5a03ddd7729912ba4dd1ef1cd41486f4f1772"
     },
     "mako": {
       "title": "MAKO",
