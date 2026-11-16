@@ -1,6 +1,6 @@
-import { definePlugin } from "@decky/api";
+import { definePlugin, useQuickAccessVisible } from "@decky/api";
 import { DialogButton, Focusable, GamepadButton, PanelSection, staticClasses } from "@decky/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { FaLayerGroup } from "react-icons/fa";
 import helixPlugin from "upstream:helix";
@@ -97,6 +97,17 @@ function Title({ names }: { names: Record<string, string> }) {
 function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   const page = usePage();
   const inner = page !== "home";
+  // B can also close the whole menu (as in a QuickTab tab). Removing the page that holds the focus
+  // while Steam closes the menu leaves the menu stuck on screen, so the page changes a moment later,
+  // and only if the menu is still open; otherwise the panel reopens where it was.
+  const visible = useQuickAccessVisible();
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const goHomeSoon = () => {
+    window.setTimeout(() => {
+      if (visibleRef.current && nav.get() !== "home") nav.go("home");
+    }, 200);
+  };
   const ours = page === "home" || page === "setup" || page === "versions" || page === "guide";
   const hidden = useInfoHidden();
   return (
@@ -114,7 +125,7 @@ function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
         inner
           ? (evt: { stopPropagation?: () => void }) => {
               evt?.stopPropagation?.();
-              nav.go("home");
+              goHomeSoon();
             }
           : undefined
       }
