@@ -78,6 +78,20 @@ class Env(object):
         sys.modules["decky"] = self.decky
         return Suite(self.decky, self.plugin_dir, proc=proc or os.path.join(self.tmp, "proc"))
 
+    def add_shortcut(self, appid, name, exe="/usr/bin/flatpak"):
+        """A game added to Steam by hand, in Steam's binary shortcuts.vdf (as Steam ROM Manager writes it)."""
+        import struct
+        d = os.path.join(self.home, ".steam", "steam", "userdata", "12345", "config")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, "shortcuts.vdf")
+        old = open(path, "rb").read()[len(b"\x00shortcuts\x00"):-2] if os.path.exists(path) else b""
+        n = old.count(b"\x02appid\x00")
+        sid = struct.pack("<I", int(appid) & 0xFFFFFFFF)
+        entry = (b"\x00" + str(n).encode() + b"\x00" + b"\x02appid\x00" + sid +
+                 b"\x01AppName\x00" + name.encode() + b"\x00" + b"\x01Exe\x00" + exe.encode() + b"\x00" + b"\x08")
+        with open(path, "wb") as f:
+            f.write(b"\x00shortcuts\x00" + old + entry + b"\x08\x08")
+
     def add_game(self, appid, name, folder, files):
         """files: relative path -> bytes."""
         steamapps = os.path.join(self.home, ".steam", "steam", "steamapps")

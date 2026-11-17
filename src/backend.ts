@@ -72,7 +72,7 @@ export interface MeasureStatus {
 
 export const getInfo = callable<[], Info>("suite_info");
 export const setProfile = callable<[id: string | null], Info>("suite_set_profile");
-export const getGames = callable<[], { appid: string; name: string; boost?: boolean }[]>("suite_games");
+export const getGames = callable<[], { appid: string; name: string; boost?: boolean; non_steam?: boolean }[]>("suite_games");
 /** launch: the game's launch options, or null when Steam did not hand them out. */
 export const getGame = callable<[appid: string, launch: string | null, name: string | null], GameView>("suite_game");
 export interface LiveState {

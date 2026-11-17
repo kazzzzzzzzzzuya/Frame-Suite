@@ -110,6 +110,17 @@ class Planning(Base):
         names = [g["name"] for g in self.go(self.suite.games())]
         self.assertEqual(sorted(names), ["Old Game", "Shiny Game"])
 
+    def test_games_added_to_steam_by_hand_are_listed_too(self):
+        self.env.add_shortcut(3000000001, "Super Emu Game")      # Steam ROM Manager / EmuDeck
+        self.env.add_shortcut(3000000002, "Other Emu Game")
+        games = {g["name"]: g for g in self.go(self.suite.games())}
+        self.assertEqual(sorted(games), ["Old Game", "Other Emu Game", "Shiny Game", "Super Emu Game"])
+        self.assertEqual(games["Super Emu Game"]["appid"], "3000000001")
+        self.assertTrue(games["Super Emu Game"]["non_steam"])
+        self.assertNotIn("non_steam", games["Shiny Game"])
+        # Such a game is handled like any other: MAKO or lsfg-vk, never OptiScaler (no Steam install to patch)
+        self.assertIn(self.go(self.suite.game("3000000001"))["plan"]["route"], ("mako", "lsfg"))
+
 
 @unittest.skipUnless((support.have_upstreams() and support.have_binaries()) or support.REQUIRE,
                      "needs the built plugin with its binaries (run the build)")
