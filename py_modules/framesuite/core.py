@@ -1385,15 +1385,20 @@ class Suite(object):
         return {"ok": True, "menu_key": code}
 
     async def games(self):
-        """Installed Steam games, the ones with something set up first."""
+        """Installed games: Steam's, and games added to Steam by hand (EmuDeck / Steam ROM Manager,
+        Heroic, Lutris, ...), the ones with something set up first."""
         listed = {}
         for g in await self._safe(self.ad.og_games(), []):
             listed[str(g["appid"])] = {"appid": str(g["appid"]), "name": g.get("name") or ""}
-        if not listed and self.ad.has("lsfg"):
+        if self.ad.has("lsfg"):
+            # lsfg-vk's list has both kinds; added-by-hand games carry Steam's app id for them.
             res = await self._safe(self.ad.call("lsfg", "get_installed_games"), {})
             for g in (res or {}).get("games", []):
-                if not g.get("nonSteam"):
-                    listed[str(g["appid"])] = {"appid": str(g["appid"]), "name": g.get("name") or ""}
+                appid = str(g.get("appid") or "")
+                if appid.isdigit() and appid not in listed:
+                    listed[appid] = {"appid": appid, "name": g.get("name") or ""}
+                    if g.get("nonSteam"):
+                        listed[appid]["non_steam"] = True
         for appid, entry in self.store.data.get("games", {}).items():
             if appid in listed:
                 listed[appid]["boost"] = bool((entry.get("boost") or {}).get("on"))

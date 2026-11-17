@@ -18,7 +18,7 @@ const ROUTE_NAME: Record<string, string> = {
 };
 const ROUTE_SHORT: Record<string, string> = { optiscaler: "OptiScaler", lsfg: "lsfg-vk", mako: "MAKO" };
 
-interface Game { appid: string; name: string; boost?: boolean }
+interface Game { appid: string; name: string; boost?: boolean; non_steam?: boolean }
 
 async function launchOptions(appid: string): Promise<string | null> {
   try {
@@ -227,7 +227,7 @@ export function Home({ info }: { info: Info }) {
 
   const gameOptions = games.map((g) => ({
     data: g.appid,
-    label: `${g.appid === runningId ? "▶ " : ""}${g.name || `App ${g.appid}`}${g.boost ? "  ✓" : ""}`,
+    label: `${g.appid === runningId ? "▶ " : ""}${g.name || `App ${g.appid}`}${g.non_steam ? " · non-Steam" : ""}${g.boost ? "  ✓" : ""}`,
   }));
   const blockers = view?.plan.blockers ?? [];
   const on = !!view?.boost.on;
