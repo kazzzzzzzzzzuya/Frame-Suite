@@ -1,4 +1,4 @@
-import { ConfirmModal, DialogButton, Field, Focusable, PanelSectionRow, showModal } from "@decky/ui";
+import { ButtonItem, ConfirmModal, DialogButton, Field, Focusable, PanelSection, PanelSectionRow, showModal } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -48,9 +48,9 @@ export const STYLES = `
 const INFO_KEY = "frame-suite:info-hidden";
 let infoHidden = (() => {
   try {
-    return window.localStorage.getItem(INFO_KEY) === "1";
+    return window.localStorage.getItem(INFO_KEY) !== "0";   // hidden until R1 shows them
   } catch {
-    return false;
+    return true;
   }
 })();
 const infoListeners = new Set<() => void>();
@@ -156,3 +156,36 @@ export function confirm(title: string, body: ReactNode, okText = "Continue"): Pr
 }
 
 export const when = (t: number) => new Date(t * 1000).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+
+/** A closed section: its name and a one-line summary; selecting it shows what is inside.
+ *  Open or closed is remembered per section. */
+export function Fold({ id, title, summary, children }: { id: string; title: string; summary?: ReactNode; children: ReactNode }) {
+  const key = `frame-suite:fold-${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      window.localStorage.setItem(key, open ? "0" : "1");
+    } catch {
+      /* no storage */
+    }
+  };
+  return (
+    <>
+      <PanelSection>
+        <PanelSectionRow>
+          <ButtonItem layout="below" description={open ? undefined : summary} onClick={toggle}>
+            {title + (open ? "  ▴" : "  ▾")}
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+      {open && children}
+    </>
+  );
+}
