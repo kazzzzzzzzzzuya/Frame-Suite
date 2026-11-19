@@ -8,7 +8,7 @@ import {
 import { nav, usePanelShown } from "../nav";
 import { launchOptionsExclusive, readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
 import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
-import { confirm, Header, InfoBox, Tile, Tiles, toast, when } from "../ui";
+import { confirm, Fold, InfoBox, Tile, Tiles, toast, when } from "../ui";
 
 const LAST_KEY = "frame-suite:last-game";
 const ROUTE_NAME: Record<string, string> = {
@@ -296,9 +296,6 @@ export function Home({ info }: { info: Info }) {
 
       <PanelSection>
         <Tiles tiles={tiles} />
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => nav.go("guide")}>Getting started</ButtonItem>
-        </PanelSectionRow>
       </PanelSection>
 
       {view && (view.toolbox || view.conflicts.length > 0 || (on && (route === "optiscaler" || route === "mako"))) && (
@@ -355,249 +352,257 @@ export function Home({ info }: { info: Info }) {
       )}
 
       {view && (
-        <PanelSection>
-          <Header>Settings for this game</Header>
-          <PanelSectionRow>
-            <DropdownItem
-              label="Method"
-              description={locked && on ? "Switch Boost off to change this." : undefined}
-              disabled={locked}
-              rgOptions={[
-                { data: "auto", label: `Automatic (${ROUTE_SHORT[view.plan.route]})` },
-                { data: "mako", label: "MAKO: adaptive frame generation" },
-                { data: "optiscaler", label: "OptiScaler: FSR 4 / HelixSR in the game" },
-                { data: "lsfg", label: "lsfg-vk: frame generation for any game" },
-              ]}
-              selectedOption={view.options.route}
-              onChange={(o) => option("route", o.data)}
-            />
-          </PanelSectionRow>
-          {route === "mako" ? (
-            <>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="Frame rate on screen"
-                  description="MAKO generates just as many frames as needed to hold this. Pick one the screen divides evenly (72 or 144 on the Legion Go, 60 at 60 Hz)."
-                  rgOptions={[
-                    { data: 0, label: `From the preset (${preset?.mako?.target_fps ?? 60} fps)` },
-                    ...[30, 36, 40, 45, 48, 60, 72, 90, 120, 144].map((f) => ({ data: f, label: `${f} fps` })),
-                  ]}
-                  selectedOption={view.options.mako_target ?? 0}
-                  onChange={(o) => option("mako_target", o.data || null)}
-                />
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="Most generated frames"
-                  description="2× keeps at least half the frames real: the least delay and fewest artifacts. 3× and 4× reach the target from fewer real frames."
-                  rgOptions={[
-                    { data: 0, label: `From the preset (${preset?.mako?.max_multiplier ?? 2}×)` },
-                    { data: 2, label: "2×" },
-                    { data: 3, label: "3×" },
-                    { data: 4, label: "4×" },
-                  ]}
-                  selectedOption={view.options.mako_max ?? 0}
-                  onChange={(o) => option("mako_max", o.data || null)}
-                />
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="Preset"
-                  description="Battery also turns on MAKO's Ultra Performance (lighter, slightly softer)."
-                  rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
-                  selectedOption={view.options.preset}
-                  onChange={(o) => option("preset", o.data)}
-                />
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="Upscaler with MAKO"
-                  description={
-                    UPSCALER_HELP[view.options.mako_upscaler] +
-                    (view.options.mako_upscaler === "off" ? "" : " Changes the game's files: the game must be closed.")
-                  }
-                  rgOptions={[
-                    { data: "off", label: "Off: MAKO alone" },
-                    { data: "optiscaler", label: "FSR 4 (OptiScaler, Framegen)" },
-                    { data: "scaler", label: "HelixSR Scaler" },
-                    { data: "direct", label: "HelixSR in place of the game's FSR" },
-                  ]}
-                  selectedOption={view.options.mako_upscaler}
-                  onChange={(o) => {
-                    const mode = o.data as string;
-                    if (!on) return void option("mako_upscaler", mode);
-                    void change("Upscaler", (lo) => applyFix(view.appid, `mako-upscaler:${mode}`, lo), false,
-                      (lo) => applyFix(view.appid, `mako-upscaler-ack:${mode}`, lo));
-                  }}
-                />
-              </PanelSectionRow>
-              {view.options.mako_upscaler === "optiscaler" && (
-                <PanelSectionRow>
-                  <ToggleField
-                    label="Add HelixSR to OptiScaler"
-                    description={
-                      view.helix.built
-                        ? "HelixSR's upscaler next to FSR 4 in OptiScaler's menu. Applies the next time the upscaler is put in."
-                        : "HelixSR is not built yet (Setup). Until then only FSR 4 is added."
-                    }
-                    checked={view.options.helix}
-                    onChange={(v) => option("helix", v)}
-                  />
-                </PanelSectionRow>
-              )}
-              {mk && (
-                <InfoBox tone="info">
-                  {`MAKO's profile "${mk.profile}": ${
-                    !mk.frame_generation_enabled ? "frame generation off" :
-                      mk.adaptive ? `adaptive, ${mk.target_fps} fps on screen, up to ${mk.adaptive_max_multiplier}×` : `fixed ${mk.multiplier}×`
-                  }.${on && view.boost.applied.mako_created === false ? " It was there before, so it was kept: change it on the MAKO page." : ""}`}
-                </InfoBox>
-              )}
-            </>
-          ) : route === "lsfg" ? (
-            <>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="Preset"
-                  description="Quality tracks motion more finely; Battery costs the least."
-                  rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
-                  selectedOption={view.options.preset}
-                  onChange={(o) => option("preset", o.data)}
-                />
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="Frames"
-                  rgOptions={[
-                    { data: 0, label: "From the preset (2×)" },
-                    { data: 2, label: "2×" },
-                    { data: 3, label: "3×" },
-                    { data: 4, label: "4×" },
-                  ]}
-                  selectedOption={view.options.multiplier ?? 0}
-                  onChange={(o) => option("multiplier", o.data || null)}
-                />
-              </PanelSectionRow>
-              {on && view.boost.applied.lsfg === "kept" && (
-                <InfoBox tone="info">This game already had an lsfg-vk profile, so it was kept. Change it on the LSFG-VK page.</InfoBox>
-              )}
-            </>
-          ) : (
-            <>
-              <PanelSectionRow>
-                <DropdownItem
-                  label="FSR 4 runtime"
-                  description={locked && on ? "Switch Boost off to change this." : "Turn on OptiScaler's FSR 4 watermark once to confirm it runs."}
-                  disabled={locked}
-                  rgOptions={info.variants.variants.map((v) => ({ data: v.id, label: v.label }))}
-                  selectedOption={view.options.variant}
-                  onChange={(o) => option("variant", o.data)}
-                />
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <ToggleField
-                  label="Add HelixSR"
-                  description={
-                    view.helix.built
-                      ? "Puts HelixSR's upscaler next to FSR 4 in OptiScaler's menu."
-                      : "HelixSR is not built yet (Setup). Until then only FSR 4 is added."
-                  }
-                  checked={view.options.helix}
-                  disabled={locked}
-                  onChange={(v) => option("helix", v)}
-                />
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <ToggleField
-                  label="Frame generation is on in the game"
-                  description="Tell the plugin when you switch on frame generation in the game's own settings: the Legion Go Toolbox reads this to aim at the doubled frame rate."
-                  checked={view.options.fg_in_game}
-                  onChange={(v) => option("fg_in_game", v)}
-                />
-              </PanelSectionRow>
-              {view.menu_key !== null && (
+        <Fold id="game-settings" title="Settings for this game" summary={`${ROUTE_SHORT[route ?? "lsfg"] ?? ""}${preset ? ` · ${preset.label}` : ""}`.replace(/^ · /, "") || "Method, frame rate, upscaler"}>
+          <PanelSection>
+            <PanelSectionRow>
+              <DropdownItem
+                label="Method"
+                description={locked && on ? "Switch Boost off to change this." : undefined}
+                disabled={locked}
+                rgOptions={[
+                  { data: "auto", label: `Automatic (${ROUTE_SHORT[view.plan.route]})` },
+                  { data: "mako", label: "MAKO: adaptive frame generation" },
+                  { data: "optiscaler", label: "OptiScaler: FSR 4 / HelixSR in the game" },
+                  { data: "lsfg", label: "lsfg-vk: frame generation for any game" },
+                ]}
+                selectedOption={view.options.route}
+                onChange={(o) => option("route", o.data)}
+              />
+            </PanelSectionRow>
+            {route === "mako" ? (
+              <>
                 <PanelSectionRow>
                   <DropdownItem
-                    label="OptiScaler menu key"
-                    description="Handhelds have none of these keys: bind the chosen one to a back button in the game's controller layout."
-                    disabled={view.running}
+                    label="Frame rate on screen"
+                    description="MAKO generates just as many frames as needed to hold this. Pick one the screen divides evenly (72 or 144 on the Legion Go, 60 at 60 Hz)."
                     rgOptions={[
-                      ...info.menu_keys.map((k) => ({ data: k.code, label: k.label })),
-                      ...(info.menu_keys.some((k) => k.code === view.menu_key) ? [] : [{ data: view.menu_key, label: `Key ${view.menu_key}` }]),
+                      { data: 0, label: `From the preset (${preset?.mako?.target_fps ?? 60} fps)` },
+                      ...[30, 36, 40, 45, 48, 60, 72, 90, 120, 144].map((f) => ({ data: f, label: `${f} fps` })),
                     ]}
-                    selectedOption={view.menu_key}
-                    onChange={async (o) => {
-                      const r = await setMenuKey(view.appid, String(o.data));
-                      if (!r.ok) toast("Menu key", r.error ?? "Not changed.");
-                      refresh(view.appid);
+                    selectedOption={view.options.mako_target ?? 0}
+                    onChange={(o) => option("mako_target", o.data || null)}
+                  />
+                </PanelSectionRow>
+                <PanelSectionRow>
+                  <DropdownItem
+                    label="Most generated frames"
+                    description="2× keeps at least half the frames real: the least delay and fewest artifacts. 3× and 4× reach the target from fewer real frames."
+                    rgOptions={[
+                      { data: 0, label: `From the preset (${preset?.mako?.max_multiplier ?? 2}×)` },
+                      { data: 2, label: "2×" },
+                      { data: 3, label: "3×" },
+                      { data: 4, label: "4×" },
+                    ]}
+                    selectedOption={view.options.mako_max ?? 0}
+                    onChange={(o) => option("mako_max", o.data || null)}
+                  />
+                </PanelSectionRow>
+                <PanelSectionRow>
+                  <DropdownItem
+                    label="Preset"
+                    description="Battery also turns on MAKO's Ultra Performance (lighter, slightly softer)."
+                    rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
+                    selectedOption={view.options.preset}
+                    onChange={(o) => option("preset", o.data)}
+                  />
+                </PanelSectionRow>
+                <PanelSectionRow>
+                  <DropdownItem
+                    label="Upscaler with MAKO"
+                    description={
+                      UPSCALER_HELP[view.options.mako_upscaler] +
+                      (view.options.mako_upscaler === "off" ? "" : " Changes the game's files: the game must be closed.")
+                    }
+                    rgOptions={[
+                      { data: "off", label: "Off: MAKO alone" },
+                      { data: "optiscaler", label: "FSR 4 (OptiScaler, Framegen)" },
+                      { data: "scaler", label: "HelixSR Scaler" },
+                      { data: "direct", label: "HelixSR in place of the game's FSR" },
+                    ]}
+                    selectedOption={view.options.mako_upscaler}
+                    onChange={(o) => {
+                      const mode = o.data as string;
+                      if (!on) return void option("mako_upscaler", mode);
+                      void change("Upscaler", (lo) => applyFix(view.appid, `mako-upscaler:${mode}`, lo), false,
+                        (lo) => applyFix(view.appid, `mako-upscaler-ack:${mode}`, lo));
                     }}
                   />
                 </PanelSectionRow>
-              )}
-            </>
-          )}
-        </PanelSection>
+                {view.options.mako_upscaler === "optiscaler" && (
+                  <PanelSectionRow>
+                    <ToggleField
+                      label="Add HelixSR to OptiScaler"
+                      description={
+                        view.helix.built
+                          ? "HelixSR's upscaler next to FSR 4 in OptiScaler's menu. Applies the next time the upscaler is put in."
+                          : "HelixSR is not built yet (Setup). Until then only FSR 4 is added."
+                      }
+                      checked={view.options.helix}
+                      onChange={(v) => option("helix", v)}
+                    />
+                  </PanelSectionRow>
+                )}
+                {mk && (
+                  <InfoBox tone="info">
+                    {`MAKO's profile "${mk.profile}": ${
+                      !mk.frame_generation_enabled ? "frame generation off" :
+                        mk.adaptive ? `adaptive, ${mk.target_fps} fps on screen, up to ${mk.adaptive_max_multiplier}×` : `fixed ${mk.multiplier}×`
+                    }.${on && view.boost.applied.mako_created === false ? " It was there before, so it was kept: change it on the MAKO page." : ""}`}
+                  </InfoBox>
+                )}
+              </>
+            ) : route === "lsfg" ? (
+              <>
+                <PanelSectionRow>
+                  <DropdownItem
+                    label="Preset"
+                    description="Quality tracks motion more finely; Battery costs the least."
+                    rgOptions={(profile?.presets ?? []).map((p) => ({ data: p.id, label: p.label }))}
+                    selectedOption={view.options.preset}
+                    onChange={(o) => option("preset", o.data)}
+                  />
+                </PanelSectionRow>
+                <PanelSectionRow>
+                  <DropdownItem
+                    label="Frames"
+                    rgOptions={[
+                      { data: 0, label: "From the preset (2×)" },
+                      { data: 2, label: "2×" },
+                      { data: 3, label: "3×" },
+                      { data: 4, label: "4×" },
+                    ]}
+                    selectedOption={view.options.multiplier ?? 0}
+                    onChange={(o) => option("multiplier", o.data || null)}
+                  />
+                </PanelSectionRow>
+                {on && view.boost.applied.lsfg === "kept" && (
+                  <InfoBox tone="info">This game already had an lsfg-vk profile, so it was kept. Change it on the LSFG-VK page.</InfoBox>
+                )}
+              </>
+            ) : (
+              <>
+                <PanelSectionRow>
+                  <DropdownItem
+                    label="FSR 4 runtime"
+                    description={locked && on ? "Switch Boost off to change this." : "Turn on OptiScaler's FSR 4 watermark once to confirm it runs."}
+                    disabled={locked}
+                    rgOptions={info.variants.variants.map((v) => ({ data: v.id, label: v.label }))}
+                    selectedOption={view.options.variant}
+                    onChange={(o) => option("variant", o.data)}
+                  />
+                </PanelSectionRow>
+                <PanelSectionRow>
+                  <ToggleField
+                    label="Add HelixSR"
+                    description={
+                      view.helix.built
+                        ? "Puts HelixSR's upscaler next to FSR 4 in OptiScaler's menu."
+                        : "HelixSR is not built yet (Setup). Until then only FSR 4 is added."
+                    }
+                    checked={view.options.helix}
+                    disabled={locked}
+                    onChange={(v) => option("helix", v)}
+                  />
+                </PanelSectionRow>
+                <PanelSectionRow>
+                  <ToggleField
+                    label="Frame generation is on in the game"
+                    description="Tell the plugin when you switch on frame generation in the game's own settings: the Legion Go Toolbox reads this to aim at the doubled frame rate."
+                    checked={view.options.fg_in_game}
+                    onChange={(v) => option("fg_in_game", v)}
+                  />
+                </PanelSectionRow>
+                {view.menu_key !== null && (
+                  <PanelSectionRow>
+                    <DropdownItem
+                      label="OptiScaler menu key"
+                      description="Handhelds have none of these keys: bind the chosen one to a back button in the game's controller layout."
+                      disabled={view.running}
+                      rgOptions={[
+                        ...info.menu_keys.map((k) => ({ data: k.code, label: k.label })),
+                        ...(info.menu_keys.some((k) => k.code === view.menu_key) ? [] : [{ data: view.menu_key, label: `Key ${view.menu_key}` }]),
+                      ]}
+                      selectedOption={view.menu_key}
+                      onChange={async (o) => {
+                        const r = await setMenuKey(view.appid, String(o.data));
+                        if (!r.ok) toast("Menu key", r.error ?? "Not changed.");
+                        refresh(view.appid);
+                      }}
+                    />
+                  </PanelSectionRow>
+                )}
+              </>
+            )}
+          </PanelSection>
+        </Fold>
       )}
 
       {view && (
-        <PanelSection>
-          <Header>Measure</Header>
-          {measure.state === "running" && measure.appid === view.appid ? (
-            <PanelSectionRow>
-              <ProgressBarWithInfo nProgress={(measure.progress ?? 0) * 100} sOperationText={measure.note || "Measuring the frame rate…"} />
-            </PanelSectionRow>
-          ) : (
+        <Fold id="measure" title="Measure" summary={view.measure[0] ? `Last: ${view.measure[0].fps} fps · ${view.measure[0].label}` : "Compare setups by their frame rate"}>
+          <PanelSection>
+            {measure.state === "running" && measure.appid === view.appid ? (
+              <PanelSectionRow>
+                <ProgressBarWithInfo nProgress={(measure.progress ?? 0) * 100} sOperationText={measure.note || "Measuring the frame rate…"} />
+              </PanelSectionRow>
+            ) : (
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={!view.running || measure.state === "running"}
+                  description={view.running ? "Stand still in a demanding scene. Takes 20 seconds." : "Start the game to measure it."}
+                  onClick={async () => {
+                    const r = await measureStart(view.appid, 20);
+                    if (r.ok) setMeasure({ state: "running", appid: view.appid, progress: 0 });
+                    else toast("Measure", r.error ?? "Could not start.");
+                  }}
+                >
+                  Measure the frame rate now
+                </ButtonItem>
+              </PanelSectionRow>
+            )}
+            {view.measure.map((m) => (
+              <InfoBox key={m.time} tone="info">
+                <span style={{ color: "#fff", fontWeight: 700 }}>{m.fps} fps</span>
+                {m.low ? ` · slowest frames ${m.low} fps` : ""}
+                {`\n${m.label}\n${when(m.time)}`}
+              </InfoBox>
+            ))}
+            {view.measure.length > 0 && (
+              <PanelSectionRow>
+                <ButtonItem layout="below" onClick={async () => { await measureClear(view.appid); refresh(view.appid); }}>
+                  Clear results
+                </ButtonItem>
+              </PanelSectionRow>
+            )}
+            {view.measure.length === 0 && (
+              <InfoBox>Measure once with each setup (same scene) to see which is fastest on this device. The number counts frames on screen, generated ones included.</InfoBox>
+            )}
+          </PanelSection>
+        </Fold>
+      )}
+
+      {view && (
+        <Fold id="cleanup" title="Help and clean up" summary="Getting started, remove everything from this game">
+          <PanelSection>
             <PanelSectionRow>
               <ButtonItem
                 layout="below"
-                disabled={!view.running || measure.state === "running"}
-                description={view.running ? "Stand still in a demanding scene. Takes 20 seconds." : "Start the game to measure it."}
+                description="Removes OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile from this game and restores its original files."
                 onClick={async () => {
-                  const r = await measureStart(view.appid, 20);
-                  if (r.ok) setMeasure({ state: "running", appid: view.appid, progress: 0 });
-                  else toast("Measure", r.error ?? "Could not start.");
+                  if (await confirm("Remove everything from this game?", `OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile are taken out of ${view.name}, whichever plugin put them there. The game must be closed.`, "Remove"))
+                    change("Clean up", (lo) => removeAll(view.appid, lo));
                 }}
               >
-                Measure the frame rate now
+                Remove everything from this game
               </ButtonItem>
             </PanelSectionRow>
-          )}
-          {view.measure.map((m) => (
-            <InfoBox key={m.time} tone="info">
-              <span style={{ color: "#fff", fontWeight: 700 }}>{m.fps} fps</span>
-              {m.low ? ` · slowest frames ${m.low} fps` : ""}
-              {`\n${m.label}\n${when(m.time)}`}
-            </InfoBox>
-          ))}
-          {view.measure.length > 0 && (
+          </PanelSection>
+          <PanelSection>
             <PanelSectionRow>
-              <ButtonItem layout="below" onClick={async () => { await measureClear(view.appid); refresh(view.appid); }}>
-                Clear results
-              </ButtonItem>
+              <ButtonItem layout="below" onClick={() => nav.go("guide")}>Getting started</ButtonItem>
             </PanelSectionRow>
-          )}
-          {view.measure.length === 0 && (
-            <InfoBox>Measure once with each setup (same scene) to see which is fastest on this device. The number counts frames on screen, generated ones included.</InfoBox>
-          )}
-        </PanelSection>
-      )}
-
-      {view && (
-        <PanelSection>
-          <Header>Clean up</Header>
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              description="Removes OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile from this game and restores its original files."
-              onClick={async () => {
-                if (await confirm("Remove everything from this game?", `OptiScaler, HelixSR, the lsfg-vk profile and MAKO's profile are taken out of ${view.name}, whichever plugin put them there. The game must be closed.`, "Remove"))
-                  change("Clean up", (lo) => removeAll(view.appid, lo));
-              }}
-            >
-              Remove everything from this game
-            </ButtonItem>
-          </PanelSectionRow>
-        </PanelSection>
+          </PanelSection>
+        </Fold>
       )}
     </>
   );

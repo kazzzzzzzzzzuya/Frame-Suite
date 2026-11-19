@@ -195,8 +195,10 @@ Each upstream's own test suite runs as part of the build too.
 ## The look
 
 Blue and white, in the style of MAKO's panel: the plugins and pages as a grid of tiles on the first page,
-section titles over a blue line, notes in boxes. **R1** hides and shows the explanations on Frame Suite's
-own pages (on the plugins' pages R1 stays theirs). **B** goes back to the first page.
+section titles over a blue line, notes in boxes. Explanations are hidden at first: **R1** shows and hides them on Frame
+Suite's own pages (on the plugins' pages R1 stays theirs). On the first page, *Settings for this game*,
+*Measure* and *Help and clean up* are closed sections (**▾**): select one to open it; open or closed is
+remembered. **B** goes back to the first page.
 
 ## Credits and licenses
 
