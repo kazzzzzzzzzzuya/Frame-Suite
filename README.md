@@ -194,8 +194,10 @@ Each upstream's own test suite runs as part of the build too.
 
 ## The look
 
-Blue and white, in the style of MAKO's panel: the plugins and pages as a grid of tiles on the first page,
-section titles over a blue line, notes in boxes. Explanations are hidden at first: **R1** shows and hides them on Frame
+The **Dot theme**, shared with the Legion Go Toolbox: true black, white and grey with one red accent,
+titles and readings in dot-matrix type, the plugins and pages as round outlined tiles on the first page,
+notes in outlined cards. Steam's own controls (switches, sliders, buttons, lists) take the same look on the
+four plugins' pages too; their own status colours stay as their authors made them. Explanations are hidden at first: **R1** shows and hides them on Frame
 Suite's own pages (on the plugins' pages R1 stays theirs). On the first page, *Settings for this game*,
 *Measure* and *Help and clean up* are closed sections (**▾**): select one to open it; open or closed is
 remembered. **B** goes back to the first page.
@@ -207,7 +209,8 @@ by Eugenio Segala (GPL-3.0-or-later), decky-lsfg-vk and Decky-Framegen by
 Kurt Himebauch (BSD 3-Clause), HelixSR Manager by PeroTuncay (The Unlicense), and through them
 [lsfg-vk](https://lsfg-vk.dev/) by PancakeTAS, [OptiScaler](https://github.com/optiscaler/OptiScaler),
 Nukem9's dlssg-to-fsr3, FakeMichau's fakenvapi and [HelixSR](https://github.com/lonewolf0622/HelixSR) by
-lonewolf0622. Their licenses ship inside the plugin under `upstream/<name>/`. Frame Suite's own code is
+lonewolf0622. Their licenses ship inside the plugin under `upstream/<name>/`. The dot-matrix font is [Doto](https://github.com/oliverlalan/Doto) by the Doto Project
+Authors (SIL Open Font License 1.1; a small Latin subset is embedded in `src/dot.ts`). Frame Suite's own code is
 MIT; its frame-rate probe comes from the Legion Go Toolbox. Because it bundles MAKO, the plugin zip as a
 whole is distributed under the GPL-3.0-or-later; the complete source to build it is this repository plus
 the upstream releases pinned in `upstreams.json`.
