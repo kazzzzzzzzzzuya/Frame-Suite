@@ -8,7 +8,7 @@ import {
 import { nav, usePanelShown } from "../nav";
 import { launchOptionsExclusive, readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
 import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
-import { confirm, Fold, InfoBox, Tile, Tiles, toast, when } from "../ui";
+import { confirm, Fold, InfoBox, Readings, Tile, Tiles, toast, when } from "../ui";
 
 const LAST_KEY = "frame-suite:last-game";
 const ROUTE_NAME: Record<string, string> = {
@@ -276,6 +276,19 @@ export function Home({ info }: { info: Info }) {
                 }
               />
             </PanelSectionRow>
+            {on && (
+              <Readings
+                items={[
+                  { label: "Measured", value: view.measure[0]?.fps, unit: "fps" },
+                  ...(route === "mako" && mk?.frame_generation_enabled
+                    ? [
+                        { label: "On screen", value: mk.adaptive ? mk.target_fps : null, unit: "fps" },
+                        { label: "Generated", value: mk.adaptive ? mk.adaptive_max_multiplier : mk.multiplier, unit: "×" },
+                      ]
+                    : []),
+                ]}
+              />
+            )}
             {!on && <InfoBox>{view.plan.reason}</InfoBox>}
             {!on && blockers.map((b) => (
               <InfoBox key={b.id} tone="warn">{b.text}</InfoBox>

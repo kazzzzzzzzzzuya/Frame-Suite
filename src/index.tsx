@@ -13,7 +13,8 @@ import { Guide } from "./pages/Guide";
 import { Home } from "./pages/Home";
 import { Setup } from "./pages/Setup";
 import { Versions } from "./pages/Versions";
-import { BLUE, InfoHint, infoVisibility, Note, RED, STYLES, useInfoHidden } from "./ui";
+import { DOT } from "./dot";
+import { InfoHint, infoVisibility, Note, RED, STYLES, useInfoHidden } from "./ui";
 import { makoLaunchFix, makoLaunchMark, makoLaunchPlan } from "./backend";
 import { launchOptionsExclusive, readLaunchOptions, writeLaunchOptions } from "./steam";
 
@@ -75,8 +76,10 @@ function Title({ names }: { names: Record<string, string> }) {
   if (page === "home")
     return (
       <div className={staticClasses.Title} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <FaLayerGroup style={{ color: BLUE }} />
-        Frame Suite
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: DOT.red, flex: "none" }} />
+        <span style={{ fontFamily: "LgoDoto, monospace", fontWeight: 900, letterSpacing: 1, textTransform: "uppercase" }}>
+          Frame Suite
+        </span>
       </div>
     );
   return (
@@ -87,7 +90,7 @@ function Title({ names }: { names: Record<string, string> }) {
       >
         ‹
       </DialogButton>
-      <div className={staticClasses.Title} style={{ padding: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div className={staticClasses.Title} style={{ padding: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "LgoDoto, monospace", fontWeight: 900, letterSpacing: 1, textTransform: "uppercase" }}>
         {names[page] ?? TITLES[page]}
       </div>
     </Focusable>

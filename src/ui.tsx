@@ -3,45 +3,49 @@ import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-// Blue and white: Steam's blue for accents, white text, soft blue panels.
-export const BLUE = "#3d9bff";
-export const BLUE_SOFT = "rgba(61, 155, 255, 0.12)";
-export const BLUE_LINE = "rgba(61, 155, 255, 0.45)";
-export const WHITE = "#f5f8fc";
-export const MUTED = "#a9b7c8";
-export const GREEN = "#6fd39a";
-export const AMBER = "#f2c14e";
-export const RED = "#ff7a7a";
+import { DOT, dotCss } from "./dot";
 
-/** Styles for the whole panel (class "fs-root"). With "fs-info-hidden" the explanations go (R1). */
+// Dot theme (see dot.ts): black, white and grey, one red accent, dot-matrix titles.
+// The names stay for the callers: BLUE is now the white of marks, GREEN/AMBER/RED the note tones.
+export const BLUE = DOT.text;
+export const BLUE_SOFT = "rgba(242, 242, 242, 0.06)";
+export const BLUE_LINE = DOT.line2;
+export const WHITE = DOT.text;
+export const MUTED = DOT.mute;
+export const GREEN = "#f2f2f2";
+export const AMBER = "#ff8a3d";
+export const RED = "#ff5a5f";
+
+/** Styles for the whole panel (class "fs-root"), the four plugins' pages included: Steam's own
+ *  controls there take the theme too. With "fs-info-hidden" the explanations go (R1). */
 export const STYLES = `
-.fs-root .fs-header { text-align: center; font-weight: 700; font-size: 15px; color: ${WHITE};
-  padding: 10px 0 6px; margin: 4px 0 6px; border-bottom: 3px solid transparent;
-  border-image: linear-gradient(90deg, rgba(61,155,255,0.15), ${BLUE}, rgba(255,255,255,0.85), ${BLUE}, rgba(61,155,255,0.15)) 1; }
-.fs-root .fs-info { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; margin: 4px 0;
-  border-radius: 8px; border: 1px solid ${BLUE_LINE}; border-left: 3px solid ${BLUE}; background: ${BLUE_SOFT};
+${dotCss(".fs-root")}
+.fs-root .fs-header { font-family: "LgoDoto", monospace; font-weight: 900; font-size: 20px; letter-spacing: 1px;
+  text-transform: uppercase; color: ${WHITE}; padding: 10px 4px 6px; margin: 4px 0 4px; }
+.fs-root .fs-info { display: flex; gap: 8px; align-items: flex-start; padding: 9px 12px; margin: 4px 0;
+  border-radius: 18px; border: 1px solid ${DOT.line}; background: ${DOT.card};
   color: ${WHITE}; font-size: 12px; line-height: 1.4; white-space: pre-wrap; }
-.fs-root .fs-info.warn { border-color: rgba(242,193,78,0.5); border-left-color: ${AMBER}; background: rgba(242,193,78,0.10); }
-.fs-root .fs-info.error { border-color: rgba(255,122,122,0.5); border-left-color: ${RED}; background: rgba(255,122,122,0.10); }
-.fs-root .fs-info.good { border-color: rgba(111,211,154,0.5); border-left-color: ${GREEN}; background: rgba(111,211,154,0.10); }
+.fs-root .fs-info.warn { border-color: rgba(255,138,61,0.55); }
+.fs-root .fs-info.error { border-color: rgba(215,25,33,0.7); }
+.fs-root .fs-info.warn .fs-i { color: ${AMBER}; }
+.fs-root .fs-info.error .fs-i { color: ${DOT.red}; }
 .fs-root .fs-info .fs-i { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor;
-  font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; opacity: 0.85; }
-.fs-root .fs-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px;
-  border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid ${BLUE_LINE}; margin: 6px 0; }
-.fs-root .fs-tile.DialogButton, .fs-root .fs-tile { min-width: 0 !important; height: 62px; padding: 6px 2px !important;
-  border-radius: 10px !important; background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.10) !important;
-  display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: ${WHITE} !important; }
-.fs-root .fs-tile svg { width: 22px; height: 22px; color: ${BLUE}; }
-.fs-root .fs-tile .fs-tile-label { font-size: 10px; line-height: 1.1; color: ${MUTED}; text-align: center; }
-.fs-root .fs-tile.gpfocus, .fs-root .fs-tile:focus { border: 1.5px solid ${BLUE} !important; background: ${BLUE_SOFT} !important;
-  box-shadow: 0 0 10px rgba(61,155,255,0.45); }
-.fs-root .fs-tile.gpfocus .fs-tile-label { color: ${WHITE}; }
-.fs-root .fs-card { border-radius: 12px; padding: 4px 8px; margin: 6px 0; border: 1px solid ${BLUE_LINE};
-  background: linear-gradient(180deg, rgba(61,155,255,0.10), rgba(255,255,255,0.02)); }
-.fs-root .fs-hint { position: sticky; bottom: 4px; display: flex; justify-content: flex-end; margin-top: 8px; pointer-events: none; }
-.fs-root .fs-hint span { background: rgba(61,155,255,0.85); color: white; font-size: 11px; font-weight: 600;
-  padding: 3px 8px; border-radius: 6px; }
-.fs-root .fs-hint b { border: 1px solid white; border-radius: 4px; padding: 0 4px; margin-right: 6px; font-size: 10px; }
+  font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.fs-root .fs-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0; margin: 8px 0; }
+.fs-root .fs-tile.DialogButton, .fs-root .fs-tile { min-width: 0 !important; height: 76px; padding: 6px 2px !important;
+  border-radius: 20px !important; background: transparent !important; border: 1px solid ${DOT.line2} !important;
+  display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: ${WHITE} !important; }
+.fs-root .fs-tile svg { width: 20px; height: 20px; color: ${WHITE}; }
+.fs-root .fs-tile .fs-tile-label { font-size: 10px; line-height: 1.1; letter-spacing: 1px; text-transform: uppercase; color: ${MUTED}; text-align: center; }
+.fs-root .fs-tile.gpfocus, .fs-root .fs-tile:focus { background: ${WHITE} !important; border-color: ${WHITE} !important; }
+.fs-root .fs-tile.gpfocus svg, .fs-root .fs-tile.gpfocus .fs-tile-label { color: #000 !important; }
+.fs-root .fs-card { border-radius: 20px; padding: 4px 10px; margin: 6px 0; border: 1px solid ${DOT.line};
+  background: ${DOT.card}; background-image: radial-gradient(#2c2c2c 1px, transparent 1.2px); background-size: 9px 9px; }
+.fs-root .fs-hint { position: sticky; bottom: 4px; display: flex; justify-content: center; margin-top: 8px; pointer-events: none; }
+.fs-root .fs-hint span { background: #000; color: ${MUTED}; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 10px; border: 1px solid ${DOT.line}; }
+.fs-root .fs-hint b { border: 1px solid ${WHITE}; color: ${WHITE}; border-radius: 4px; padding: 0 4px; margin-right: 6px; font-size: 10px; }
+.fs-root .fs-fold .DialogButton { border-style: dashed !important; border-radius: 20px !important; text-align: left; }
 .fs-root.fs-info-hidden .fs-info.help, .fs-root.fs-info-hidden [class*="FieldDescription"] { display: none !important; }
 `;
 
@@ -178,14 +182,35 @@ export function Fold({ id, title, summary, children }: { id: string; title: stri
   };
   return (
     <>
-      <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" description={open ? undefined : summary} onClick={toggle}>
-            {title + (open ? "  ▴" : "  ▾")}
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+      <div className="fs-fold">
+        <PanelSection>
+          <PanelSectionRow>
+            <ButtonItem layout="below" description={open ? undefined : summary} onClick={toggle}>
+              {title + (open ? "  ▴" : "  ▾")}
+            </ButtonItem>
+          </PanelSectionRow>
+        </PanelSection>
+      </div>
       {open && children}
     </>
+  );
+}
+
+/** Big dot-matrix readings side by side (label, number, unit). Values that are null are left out. */
+export function Readings({ items }: { items: { label: string; value: number | string | null | undefined; unit?: string }[] }) {
+  const shown = items.filter((i) => i.value != null && i.value !== "");
+  if (!shown.length) return null;
+  return (
+    <div style={{ display: "flex", gap: 18, padding: "6px 4px 8px" }}>
+      {shown.map((i) => (
+        <div key={i.label} style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: MUTED }}>{i.label}</div>
+          <div style={{ fontFamily: "LgoDoto, monospace", fontWeight: 900, fontSize: 30, lineHeight: 1, letterSpacing: 1 }}>
+            {i.value}
+            {i.unit && <span style={{ fontSize: 13, color: MUTED, marginLeft: 3 }}>{i.unit}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
