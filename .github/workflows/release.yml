@@ -76,7 +76,9 @@ jobs:
           if ! git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
             next=$current        # this version has not been released yet
           else
-            next=$(npm version patch --no-git-tag-version | tr -d v)
+            # x.y.z: z up to 10, then y up to 20, then x (scripts/next-version.mjs)
+            next=$(node scripts/next-version.mjs)
+            npm version "$next" --no-git-tag-version >/dev/null
           fi
           echo "version=$next" >> "$GITHUB_OUTPUT"
 

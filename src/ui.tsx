@@ -240,3 +240,22 @@ export function Pills({ options, value, onChange }: {
     </PanelSectionRow>
   );
 }
+
+/** A switch row drawn by the theme (Steam's own toggle ignores restyling on some clients and
+ *  stayed blue). Same props as Decky's ToggleField: A or a tap flips it. */
+export function Toggle({ label, description, checked, disabled, onChange }: {
+  label: ReactNode;
+  description?: ReactNode;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const flip = () => {
+    if (!disabled) onChange(!checked);
+  };
+  return (
+    <Field label={label} description={description} focusable highlightOnFocus onActivate={flip} onClick={flip}>
+      <span className={`dot-switch${checked ? " on" : ""}${disabled ? " disabled" : ""}`} role="switch" aria-checked={checked} />
+    </Field>
+  );
+}
