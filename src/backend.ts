@@ -69,6 +69,8 @@ export interface Release { version: string; url: string; sha256: string; publish
 export interface Updates { ok: boolean; error?: string; current: string; latest?: string; newer?: boolean; releases: Release[] }
 export interface MeasureStatus {
   state: "idle" | "running" | "done" | "failed"; appid?: string; progress?: number; note?: string; error?: string;
+  /** The menu is open, so nothing is being counted (MAKO pauses while it is open). */
+  waiting?: boolean;
   result?: Measurement;
 }
 
@@ -111,3 +113,4 @@ export const toolboxBoostTodo = callable<[], { on: { appid: string; name: string
 );
 export const toolboxBoostOn = callable<[appid: string, name: string, launch: string], Change>("suite_toolbox_boost_on");
 export const toolboxBoostOff = callable<[appid: string, launch: string], Change>("suite_toolbox_boost_off");
+export const menuState = callable<[open: boolean], void>("suite_menu");

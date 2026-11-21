@@ -75,6 +75,9 @@ class Plugin:
     async def suite_boost_off(self, appid, launch_options):
         return await self.suite.boost_off(appid, launch_options)
 
+    async def suite_menu(self, open_):
+        self.suite.set_menu(bool(open_))
+
     async def suite_toolbox_boost_todo(self):
         return self.suite.toolbox_boost_todo()
 

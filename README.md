@@ -199,6 +199,10 @@ it does in big numbers, a line when the Legion Go Toolbox asked for it, **Qualit
 as a few buttons, then closed sections: *Measure*, *Expert: the four plugins* (their tiles and every
 per-game setting) and *Help and clean up*.
 
+**Measure** counts only time with the menu closed, because MAKO pauses its frame generation while the
+Quick Access menu is open: press it, close the menu (B), stand still in a demanding scene; 20 seconds of
+play later the result is on the first page.
+
 **With the Legion Go Toolbox:** choosing *Smoothest* for a game on the toolbox's Game tab turns that
 game's Boost on here by itself (within seconds; it starts with the game's next start), and choosing
 another mode turns it off again. Switch it off here by hand and it stays off until the mode changes.

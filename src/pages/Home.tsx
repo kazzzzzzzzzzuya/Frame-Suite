@@ -411,14 +411,17 @@ export function Home({ info }: { info: Info }) {
           <PanelSection>
             {measure.state === "running" && measure.appid === view.appid ? (
               <PanelSectionRow>
-                <ProgressBarWithInfo nProgress={(measure.progress ?? 0) * 100} sOperationText={measure.note || "Measuring the frame rate…"} />
+                <ProgressBarWithInfo
+                  nProgress={(measure.progress ?? 0) * 100}
+                  sOperationText={measure.waiting ? "Close the menu: only play with the menu closed is measured." : measure.note || "Measuring the frame rate…"}
+                />
               </PanelSectionRow>
             ) : (
               <PanelSectionRow>
                 <ButtonItem
                   layout="below"
                   disabled={!view.running || measure.state === "running"}
-                  description={view.running ? "Stand still in a demanding scene. Takes 20 seconds." : "Start the game to measure it."}
+                  description={view.running ? "Press, then close the menu and stand still in a demanding scene: it counts 20 seconds with the menu closed (MAKO pauses while it is open). The result is here next time." : "Start the game to measure it."}
                   onClick={async () => {
                     const r = await measureStart(view.appid, 20);
                     if (r.ok) setMeasure({ state: "running", appid: view.appid, progress: 0 });
