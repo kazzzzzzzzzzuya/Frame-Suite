@@ -45,6 +45,8 @@ ${dotCss(".fs-root")}
 .fs-root .fs-hint span { background: #000; color: ${MUTED}; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
   padding: 3px 10px; border-radius: 10px; border: 1px solid ${DOT.line}; }
 .fs-root .fs-hint b { border: 1px solid ${WHITE}; color: ${WHITE}; border-radius: 4px; padding: 0 4px; margin-right: 6px; font-size: 10px; }
+.fs-root .fs-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: ${MUTED}; margin: 10px 4px 2px; }
+.fs-root .DialogButton.fs-pill.on { background: ${DOT.red} !important; border-color: ${DOT.red} !important; color: #fff !important; }
 .fs-root .fs-fold .DialogButton { border-style: dashed !important; border-radius: 20px !important; text-align: left; }
 .fs-root.fs-info-hidden .fs-info.help, .fs-root.fs-info-hidden [class*="FieldDescription"] { display: none !important; }
 `;
@@ -201,16 +203,40 @@ export function Readings({ items }: { items: { label: string; value: number | st
   const shown = items.filter((i) => i.value != null && i.value !== "");
   if (!shown.length) return null;
   return (
-    <div style={{ display: "flex", gap: 18, padding: "6px 4px 8px" }}>
+    <div style={{ display: "flex", gap: 10, padding: "6px 4px 8px" }}>
       {shown.map((i) => (
-        <div key={i.label} style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: MUTED }}>{i.label}</div>
-          <div style={{ fontFamily: "LgoDoto, monospace", fontWeight: 900, fontSize: 30, lineHeight: 1, letterSpacing: 1 }}>
+        <div key={i.label} style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.label}</div>
+          <div style={{ fontFamily: "LgoDoto, monospace", fontWeight: 900, fontSize: 26, lineHeight: 1, letterSpacing: 1, marginTop: 3, whiteSpace: "nowrap" }}>
             {i.value}
             {i.unit && <span style={{ fontSize: 13, color: MUTED, marginLeft: 3 }}>{i.unit}</span>}
           </div>
         </div>
       ))}
     </div>
+  );
+}
+
+/** A row of pill buttons for a few choices; the chosen one is filled red. */
+export function Pills({ options, value, onChange }: {
+  options: { id: string; label: string }[];
+  value: string | null | undefined;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <PanelSectionRow>
+      <Focusable flow-children="horizontal" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "4px 0" }}>
+        {options.map((o) => (
+          <DialogButton
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            className={o.id === value ? "fs-pill on" : "fs-pill"}
+            style={{ width: "auto", minWidth: 0, padding: "4px 12px", fontSize: 12, lineHeight: "18px", flex: "none" }}
+          >
+            {o.label}
+          </DialogButton>
+        ))}
+      </Focusable>
+    </PanelSectionRow>
   );
 }

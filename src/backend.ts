@@ -46,6 +46,8 @@ export interface GameView {
   summary: { active: string[]; live: string };
   measure: Measurement[];
   toolbox: ToolboxRecord | null;
+  /** Smoothest on the Legion Go Toolbox's Game tab asks for Boost (see toolboxBoost.ts). */
+  toolbox_boost?: { requested: boolean; by_toolbox: boolean; declined: boolean; refused: string | null };
   mako: { available: boolean; installed: boolean; wrapper: string | null; profile: MakoProfile | null };
 }
 export interface Change {
@@ -102,3 +104,10 @@ export const makoLaunchFix = callable<[appid: string, launch: string], { launch_
 );
 export const makoLaunchMark = callable<[appid: string, added: boolean], { ok: boolean }>("suite_mako_launch_mark");
 export const getUpdates = callable<[force: boolean], Updates>("suite_updates");
+
+// Smoothest on the Legion Go Toolbox's Game tab: what to turn on or off, and doing it.
+export const toolboxBoostTodo = callable<[], { on: { appid: string; name: string }[]; off: string[] }>(
+  "suite_toolbox_boost_todo",
+);
+export const toolboxBoostOn = callable<[appid: string, name: string, launch: string], Change>("suite_toolbox_boost_on");
+export const toolboxBoostOff = callable<[appid: string, launch: string], Change>("suite_toolbox_boost_off");

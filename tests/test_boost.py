@@ -727,3 +727,62 @@ class MakoWithUpscaler(Base):
         entry["options"] = {"mako_upscale": True}
         self.assertEqual(self.suite.options("1000")["mako_upscaler"], "optiscaler")
         self.assertFalse(self.go(self.suite.set_option("1000", "mako_upscaler", "nonsense"))["ok"])
+
+
+class ToolboxBoost(Base):
+    """Smoothest on the Legion Go Toolbox's Game tab: Frame Suite boosts the game."""
+
+    def setUp(self):
+        super().setUp()
+        self.result = {"ok": True}
+
+        async def fake_on(appid, name, lo, ack):
+            if not self.result.get("ok"):
+                return dict(self.result)
+            self.suite.store.data.setdefault("games", {}).setdefault(appid, {"options": {}})["boost"] = {
+                "on": True, "applied": {}}
+            return {"ok": True, "launch_options": lo, "launch_changed": False}
+
+        async def fake_out(*a, **k):
+            return {"ok": True}
+
+        self.suite._boost_on = fake_on
+        self.suite._upscaler_out = fake_out
+
+    def ask(self, games):
+        path = toolbox.path(self.env.home)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"version": 1, "updated": int(time.time()), "games": games}, f)
+
+    def todo(self):
+        t = self.suite.toolbox_boost_todo()
+        return [g["appid"] for g in t["on"]], t["off"]
+
+    def test_on_declined_withdrawn_and_off(self):
+        self.ask({"1000": {"standby": False, "multiplier": None, "boost": True, "name": "Shiny Game"}})
+        self.assertEqual(self.todo(), (["1000"], []))
+        self.assertTrue(self.go(self.suite.toolbox_boost_on("1000", "Shiny Game", ""))["ok"])
+        self.assertEqual(self.todo(), ([], []))
+        self.assertTrue(self.suite.toolbox_boost_state("1000")["by_toolbox"])
+        self.go(self.suite.boost_off("1000", ""))                       # switched off by hand
+        self.assertEqual(self.todo(), ([], []))                         # ... stays off while asked
+        self.assertTrue(self.suite.toolbox_boost_state("1000")["declined"])
+        self.ask({})                                                    # mode changed: forgotten
+        self.assertEqual(self.todo(), ([], []))
+        self.assertEqual(self.suite.store.data["toolbox_boost"], {})
+        self.ask({"1000": {"boost": True, "name": "Shiny Game"}})       # Smoothest again
+        self.assertEqual(self.todo(), (["1000"], []))
+        self.go(self.suite.toolbox_boost_on("1000", "Shiny Game", ""))
+        self.ask({})                                                    # mode changed: off again
+        self.assertEqual(self.todo(), ([], ["1000"]))
+        self.assertTrue(self.go(self.suite.toolbox_boost_off("1000", ""))["ok"])
+        self.assertEqual(self.todo(), ([], []))
+
+    def test_anti_cheat_is_left_to_the_user(self):
+        self.result = {"ok": False, "need_ack": True, "anticheat": ["EAC"]}
+        self.ask({"1000": {"boost": True, "name": "Shiny Game"}})
+        self.go(self.suite.toolbox_boost_on("1000", "Shiny Game", ""))
+        self.assertEqual(self.todo(), ([], []))
+        self.assertIn("anti-cheat", self.suite.toolbox_boost_state("1000")["refused"])
+        self.assertEqual(toolbox.read_boosts(self.env.home), {"1000": "Shiny Game"})

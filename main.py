@@ -75,6 +75,15 @@ class Plugin:
     async def suite_boost_off(self, appid, launch_options):
         return await self.suite.boost_off(appid, launch_options)
 
+    async def suite_toolbox_boost_todo(self):
+        return self.suite.toolbox_boost_todo()
+
+    async def suite_toolbox_boost_on(self, appid, name, launch_options):
+        return await self.suite.toolbox_boost_on(appid, name, launch_options)
+
+    async def suite_toolbox_boost_off(self, appid, launch_options):
+        return await self.suite.toolbox_boost_off(appid, launch_options)
+
     async def suite_remove_all(self, appid, launch_options):
         return await self.suite.remove_all(appid, launch_options)
 

@@ -8,7 +8,7 @@ import {
 import { nav, usePanelShown } from "../nav";
 import { launchOptionsExclusive, readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
 import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
-import { confirm, Fold, InfoBox, Readings, Tile, Tiles, toast, when } from "../ui";
+import { confirm, Fold, InfoBox, Pills, Readings, Tile, Tiles, toast, when } from "../ui";
 
 const LAST_KEY = "frame-suite:last-game";
 const ROUTE_NAME: Record<string, string> = {
@@ -238,6 +238,12 @@ export function Home({ info }: { info: Info }) {
   const sub = (id: string) => info.subs.find((s) => s.id === id);
   const mk = view?.mako.profile ?? null;
   const preset = profile?.presets.find((p) => p.id === view?.options.preset);
+  const setUpscaler = (mode: string) => {
+    if (!view) return;
+    if (!on) return void option("mako_upscaler", mode);
+    void change("Upscaler", (lo) => applyFix(view.appid, `mako-upscaler:${mode}`, lo), false,
+      (lo) => applyFix(view.appid, `mako-upscaler-ack:${mode}`, lo));
+  };
   const tiles: Tile[] = [
     { id: "mako", icon: <FaForward />, label: "MAKO", onClick: () => nav.go("mako"), disabled: !sub("mako")?.ok },
     { id: "lsfg", icon: <FaClone />, label: "LSFG-VK", onClick: () => nav.go("lsfg"), disabled: !sub("lsfg")?.ok },
@@ -265,8 +271,8 @@ export function Home({ info }: { info: Info }) {
           <div className="fs-card">
             <PanelSectionRow>
               <ToggleField
-                label={`Boost ${view.name}`}
-                description={`${profile?.label ?? info.profile} → ${ROUTE_NAME[route ?? "lsfg"]}`}
+                label="Frame generation"
+                description={`Chosen for this game: ${ROUTE_NAME[route ?? "lsfg"]}`}
                 checked={on}
                 disabled={!on && blockers.length > 0}
                 onChange={(v) =>
@@ -279,13 +285,13 @@ export function Home({ info }: { info: Info }) {
             {on && (
               <Readings
                 items={[
-                  { label: "Measured", value: view.measure[0]?.fps, unit: "fps" },
                   ...(route === "mako" && mk?.frame_generation_enabled
                     ? [
-                        { label: "On screen", value: mk.adaptive ? mk.target_fps : null, unit: "fps" },
-                        { label: "Generated", value: mk.adaptive ? mk.adaptive_max_multiplier : mk.multiplier, unit: "×" },
+                        { label: "You see", value: mk.adaptive ? mk.target_fps : null, unit: "fps" },
+                        { label: "Extra", value: mk.adaptive ? mk.adaptive_max_multiplier : mk.multiplier, unit: "×" },
                       ]
                     : []),
+                  { label: "Measured", value: view.measure[0]?.fps != null ? Math.round(view.measure[0].fps) : null, unit: "fps" },
                 ]}
               />
             )}
@@ -307,9 +313,45 @@ export function Home({ info }: { info: Info }) {
         )}
       </PanelSection>
 
-      <PanelSection>
-        <Tiles tiles={tiles} />
-      </PanelSection>
+      {view && (
+        <PanelSection>
+          {view.toolbox_boost?.requested && (
+            <InfoBox tone={view.toolbox_boost.refused ? "warn" : "info"}>
+              {view.toolbox_boost.refused
+                ? `Smoothest is chosen for this game in the Legion Go Toolbox, but Boost did not turn on: ${view.toolbox_boost.refused}`
+                : view.toolbox_boost.declined
+                  ? "Smoothest is chosen for this game in the Legion Go Toolbox, but you switched frame generation off here. It stays off until the mode changes."
+                  : on
+                    ? `On because ${view.name} is set to Smoothest in the Legion Go Toolbox. Change it there, or switch it off here.`
+                    : "Smoothest is chosen for this game in the Legion Go Toolbox: frame generation turns on in a moment."}
+            </InfoBox>
+          )}
+          {(profile?.presets?.length ?? 0) > 1 && (route === "mako" || route === "lsfg") && (
+            <>
+              <div className="fs-label">Quality</div>
+              <Pills
+                options={(profile?.presets ?? []).map((p) => ({ id: p.id, label: p.label }))}
+                value={view.options.preset}
+                onChange={(id) => void option("preset", id)}
+              />
+            </>
+          )}
+          {route === "mako" && (
+            <>
+              <div className="fs-label">Upscaler</div>
+              <Pills
+                options={[
+                  { id: "off", label: "Off" },
+                  { id: "optiscaler", label: "FSR 4" },
+                  { id: "scaler", label: "HelixSR" },
+                ]}
+                value={view.options.mako_upscaler}
+                onChange={(id) => setUpscaler(id)}
+              />
+            </>
+          )}
+        </PanelSection>
+      )}
 
       {view && (view.toolbox || view.conflicts.length > 0 || (on && (route === "optiscaler" || route === "mako"))) && (
         <PanelSection>
@@ -365,7 +407,54 @@ export function Home({ info }: { info: Info }) {
       )}
 
       {view && (
-        <Fold id="game-settings" title="Settings for this game" summary={`${ROUTE_SHORT[route ?? "lsfg"] ?? ""}${preset ? ` · ${preset.label}` : ""}`.replace(/^ · /, "") || "Method, frame rate, upscaler"}>
+        <Fold id="measure" title="Measure" summary={view.measure[0] ? `Last: ${view.measure[0].fps} fps · ${view.measure[0].label}` : "Compare setups by their frame rate"}>
+          <PanelSection>
+            {measure.state === "running" && measure.appid === view.appid ? (
+              <PanelSectionRow>
+                <ProgressBarWithInfo nProgress={(measure.progress ?? 0) * 100} sOperationText={measure.note || "Measuring the frame rate…"} />
+              </PanelSectionRow>
+            ) : (
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={!view.running || measure.state === "running"}
+                  description={view.running ? "Stand still in a demanding scene. Takes 20 seconds." : "Start the game to measure it."}
+                  onClick={async () => {
+                    const r = await measureStart(view.appid, 20);
+                    if (r.ok) setMeasure({ state: "running", appid: view.appid, progress: 0 });
+                    else toast("Measure", r.error ?? "Could not start.");
+                  }}
+                >
+                  Measure the frame rate now
+                </ButtonItem>
+              </PanelSectionRow>
+            )}
+            {view.measure.map((m) => (
+              <InfoBox key={m.time} tone="info">
+                <span style={{ color: "#fff", fontWeight: 700 }}>{m.fps} fps</span>
+                {m.low ? ` · slowest frames ${m.low} fps` : ""}
+                {`\n${m.label}\n${when(m.time)}`}
+              </InfoBox>
+            ))}
+            {view.measure.length > 0 && (
+              <PanelSectionRow>
+                <ButtonItem layout="below" onClick={async () => { await measureClear(view.appid); refresh(view.appid); }}>
+                  Clear results
+                </ButtonItem>
+              </PanelSectionRow>
+            )}
+            {view.measure.length === 0 && (
+              <InfoBox>Measure once with each setup (same scene) to see which is fastest on this device. The number counts frames on screen, generated ones included.</InfoBox>
+            )}
+          </PanelSection>
+        </Fold>
+      )}
+
+      {view && (
+        <Fold id="expert" title="Expert: the four plugins" summary={`${ROUTE_SHORT[route ?? "lsfg"] ?? ""} · method, frame rate · MAKO, LSFG-VK, Framegen, HelixSR, Setup`.replace(/^ · /, "")}>
+          <PanelSection>
+            <Tiles tiles={tiles} />
+          </PanelSection>
           <PanelSection>
             <PanelSectionRow>
               <DropdownItem
@@ -433,12 +522,7 @@ export function Home({ info }: { info: Info }) {
                       { data: "direct", label: "HelixSR in place of the game's FSR" },
                     ]}
                     selectedOption={view.options.mako_upscaler}
-                    onChange={(o) => {
-                      const mode = o.data as string;
-                      if (!on) return void option("mako_upscaler", mode);
-                      void change("Upscaler", (lo) => applyFix(view.appid, `mako-upscaler:${mode}`, lo), false,
-                        (lo) => applyFix(view.appid, `mako-upscaler-ack:${mode}`, lo));
-                    }}
+                    onChange={(o) => setUpscaler(o.data as string)}
                   />
                 </PanelSectionRow>
                 {view.options.mako_upscaler === "optiscaler" && (
@@ -545,50 +629,6 @@ export function Home({ info }: { info: Info }) {
                   </PanelSectionRow>
                 )}
               </>
-            )}
-          </PanelSection>
-        </Fold>
-      )}
-
-      {view && (
-        <Fold id="measure" title="Measure" summary={view.measure[0] ? `Last: ${view.measure[0].fps} fps · ${view.measure[0].label}` : "Compare setups by their frame rate"}>
-          <PanelSection>
-            {measure.state === "running" && measure.appid === view.appid ? (
-              <PanelSectionRow>
-                <ProgressBarWithInfo nProgress={(measure.progress ?? 0) * 100} sOperationText={measure.note || "Measuring the frame rate…"} />
-              </PanelSectionRow>
-            ) : (
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  disabled={!view.running || measure.state === "running"}
-                  description={view.running ? "Stand still in a demanding scene. Takes 20 seconds." : "Start the game to measure it."}
-                  onClick={async () => {
-                    const r = await measureStart(view.appid, 20);
-                    if (r.ok) setMeasure({ state: "running", appid: view.appid, progress: 0 });
-                    else toast("Measure", r.error ?? "Could not start.");
-                  }}
-                >
-                  Measure the frame rate now
-                </ButtonItem>
-              </PanelSectionRow>
-            )}
-            {view.measure.map((m) => (
-              <InfoBox key={m.time} tone="info">
-                <span style={{ color: "#fff", fontWeight: 700 }}>{m.fps} fps</span>
-                {m.low ? ` · slowest frames ${m.low} fps` : ""}
-                {`\n${m.label}\n${when(m.time)}`}
-              </InfoBox>
-            ))}
-            {view.measure.length > 0 && (
-              <PanelSectionRow>
-                <ButtonItem layout="below" onClick={async () => { await measureClear(view.appid); refresh(view.appid); }}>
-                  Clear results
-                </ButtonItem>
-              </PanelSectionRow>
-            )}
-            {view.measure.length === 0 && (
-              <InfoBox>Measure once with each setup (same scene) to see which is fastest on this device. The number counts frames on screen, generated ones included.</InfoBox>
             )}
           </PanelSection>
         </Fold>

@@ -527,6 +527,7 @@ class Suite(object):
             "summary": self._summary(f, entry, plan, livecheck),
             "measure": self.store.data.get("measure", {}).get(appid, []),
             "toolbox": (self.store.data.get("toolbox") or {}).get(appid),
+            "toolbox_boost": self.toolbox_boost_state(appid),
             "mako": dict(f["mk"], profile=f.get("mprof")),
             "busy": bool(self.busy.get(appid)),
         }
@@ -887,14 +888,85 @@ class Suite(object):
 
     # --- the switch -------------------------------------------------------------------
 
-    async def boost_on(self, appid, name, launch_options, ack=False):
+    # --- Smoothest on the Legion Go Toolbox's Game tab ---------------------------------
+    # The toolbox asks in its request file (toolbox.read_boosts). Boost needs the game's launch
+    # options, which only the frontend can read and write, so the frontend's watcher asks
+    # toolbox_boost_todo() what to do and calls toolbox_boost_on / _off. Per game the store
+    # keeps {"by_toolbox": it was turned on for the request, "declined": the user switched it
+    # off by hand while asked, "refused": why turning it on did not work, "refused_at"}.
+
+    TB_RETRY_S = 120.0
+
+    def _tb_boosts(self):
+        return self.store.data.setdefault("toolbox_boost", {})
+
+    def _boosted(self, appid):
+        return bool(((self.store.game(appid) or {}).get("boost") or {}).get("on"))
+
+    def toolbox_boost_todo(self):
+        reqs = toolbox.read_boosts(self.home)
+        recs = self._tb_boosts()
+        now, on, off, changed = time.time(), [], [], False
+        for appid, name in reqs.items():
+            rec = recs.get(appid) or {}
+            if self._boosted(appid) or rec.get("declined") or self.busy.get(appid):
+                continue
+            if rec.get("refused") and (rec.get("ack") or now - (rec.get("refused_at") or 0) < self.TB_RETRY_S):
+                continue
+            on.append({"appid": appid, "name": name or rec.get("name") or "App %s" % appid})
+        for appid, rec in list(recs.items()):
+            if appid in reqs:
+                continue
+            if rec.get("by_toolbox") and self._boosted(appid):
+                off.append(appid)
+            else:
+                del recs[appid]
+                changed = True
+        if changed:
+            self.store.save()
+        return {"on": on, "off": off}
+
+    def toolbox_boost_state(self, appid):
+        appid = str(appid)
+        rec = self._tb_boosts().get(appid) or {}
+        return {"requested": appid in toolbox.read_boosts(self.home), "by_toolbox": bool(rec.get("by_toolbox")),
+                "declined": bool(rec.get("declined")), "refused": rec.get("refused")}
+
+    async def toolbox_boost_on(self, appid, name, launch_options):
+        appid = str(appid)
+        res = await self.boost_on(appid, name, launch_options, False, by_toolbox=True)
+        rec = self._tb_boosts().setdefault(appid, {})
+        rec["name"] = str(name or "")[:120]
+        if res.get("ok"):
+            rec.update(by_toolbox=True, declined=False, refused=None, ack=False)
+        else:
+            rec.update(refused="The game has anti-cheat: turn Boost on by hand if you accept the risk."
+                       if res.get("need_ack") else (res.get("error") or "It did not work."),
+                       refused_at=time.time(), ack=bool(res.get("need_ack")))
+        self.store.save()
+        return res
+
+    async def toolbox_boost_off(self, appid, launch_options):
+        appid = str(appid)
+        res = await self.boost_off(appid, launch_options, by_toolbox=True)
+        if res.get("ok"):
+            self._tb_boosts().pop(appid, None)
+            self.store.save()
+        return res
+
+    async def boost_on(self, appid, name, launch_options, ack=False, by_toolbox=False):
         appid = str(appid)
         launch_options = launch_options or ""
         if self.busy.get(appid):
             return {"ok": False, "error": "A change for this game is still running."}
         self.busy[appid] = True
         try:
-            return await self._boost_on(appid, name, launch_options, bool(ack))
+            res = await self._boost_on(appid, name, launch_options, bool(ack))
+            rec = self._tb_boosts().get(appid)
+            if res.get("ok") and not by_toolbox and rec:
+                rec.update(declined=False, refused=None)   # the user's own Boost: theirs to switch off
+                self.store.save()
+            return res
         except adapters.Unavailable as exc:
             return {"ok": False, "error": str(exc)}
         except Exception as exc:
@@ -1130,11 +1202,15 @@ class Suite(object):
         if dirs:
             applied["helix"] = dirs
 
-    async def boost_off(self, appid, launch_options):
+    async def boost_off(self, appid, launch_options, by_toolbox=False):
         appid = str(appid)
         launch_options = launch_options or ""
         entry = self.store.game(appid)
         boost = (entry or {}).get("boost") or {}
+        if not by_toolbox and boost.get("on") and appid in toolbox.read_boosts(self.home):
+            # Switched off by hand while the toolbox asks for it: stays off until the mode changes.
+            self._tb_boosts().setdefault(appid, {}).update(declined=True, by_toolbox=False)
+            self.store.save()
         if not boost.get("on"):
             return {"ok": True, "launch_options": launch_options, "launch_changed": False, "done": [],
                     "warnings": [], "view": await self.game(appid, launch_options)}
