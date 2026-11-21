@@ -1,6 +1,6 @@
 import { ButtonItem, ConfirmModal, DialogButton, Field, Focusable, PanelSection, PanelSectionRow, showModal } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { DOT, dotCss } from "./dot";
@@ -250,7 +250,13 @@ export function Toggle({ label, description, checked, disabled, onChange }: {
   disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
+  // A Field calls onActivate for A and also for a tap (it takes a MouseEvent), and onClick for the tap
+  // as well: act once per press, or a tap would flip it twice.
+  const last = useRef(0);
   const flip = () => {
+    const now = Date.now();
+    if (now - last.current < 400) return;
+    last.current = now;
     if (!disabled) onChange(!checked);
   };
   return (
