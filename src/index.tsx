@@ -7,8 +7,8 @@ import helixPlugin from "upstream:helix";
 import lsfgPlugin from "upstream:lsfg";
 import makoPlugin from "upstream:mako";
 import optiscalerPlugin from "upstream:optiscaler";
-import { getInfo, Info } from "./backend";
-import { guideSeen, nav, panel, SubId, usePage } from "./nav";
+import { getInfo, Info, menuState } from "./backend";
+import { guideSeen, nav, panel, SubId, usePage, usePanelShown } from "./nav";
 import { Guide } from "./pages/Guide";
 import { Home } from "./pages/Home";
 import { Setup } from "./pages/Setup";
@@ -113,6 +113,12 @@ function Root({ upstream }: { upstream: Record<SubId, Upstream> }) {
   // own element is asked.
   // In Decky's own tab (Decky knows it is open) B never closes the menu: straight back.
   const deckyVisible = useQuickAccessVisible();
+  // Measure counts only time with the menu closed (MAKO pauses while it is open): tell the backend.
+  const panelShown = usePanelShown();
+  const menuVisible = deckyVisible || panelShown;
+  useEffect(() => {
+    void menuState(menuVisible).catch(() => undefined);
+  }, [menuVisible]);
   const deckyRef = useRef(deckyVisible);
   deckyRef.current = deckyVisible;
   const goHomeSoon = () => {

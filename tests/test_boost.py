@@ -1,6 +1,7 @@
 """The per-game switch, end to end, with the real upstream backends working
 on a temporary home folder and a made-up Steam library."""
 
+import asyncio
 import json
 import os
 import time
@@ -786,3 +787,36 @@ class ToolboxBoost(Base):
         self.assertEqual(self.todo(), ([], []))
         self.assertIn("anti-cheat", self.suite.toolbox_boost_state("1000")["refused"])
         self.assertEqual(toolbox.read_boosts(self.env.home), {"1000": "Shiny Game"})
+
+
+class MeasureMenu(Base):
+    """Measure counts only time with the menu closed (MAKO pauses while it is open)."""
+
+    def fake_probe(self):
+        path = os.path.join(self.env.tmp, "fake-python")
+        with open(path, "w") as f:
+            # Ignores its arguments; prints a half-second window every 20 ms: 60 fps, 30 frames.
+            f.write("#!/bin/sh\nwhile true; do echo '60.00 30 55.0'; sleep 0.02; done\n")
+        os.chmod(path, 0o755)
+        return path
+
+    def test_menu_open_time_is_not_counted(self):
+        self.suite.MENU_SETTLE_S = 0.0
+        self.suite.set_menu(True)
+        self.suite.measure = {"state": "running", "appid": "1000", "seconds": 2, "started": time.time(),
+                              "label": "test", "note": ""}
+
+        async def run():
+            task = asyncio.ensure_future(self.suite._measure(self.fake_probe(), "1000", 2))
+            await asyncio.sleep(0.4)
+            waiting = (self.suite.measure.get("waiting"), self.suite.measure_status()["progress"])
+            self.suite.set_menu(False)
+            await asyncio.wait_for(task, timeout=10)
+            return waiting
+
+        waiting = self.go(run())
+        self.assertEqual(waiting, (True, 0.0))                   # menu open: nothing counted yet
+        m = self.suite.measure
+        self.assertEqual(m["state"], "done", m)
+        self.assertEqual(m["result"]["windows"], 4)               # exactly 2 s of closed-menu play
+        self.assertEqual(m["result"]["fps"], 60.0)

@@ -109,6 +109,10 @@ class Suite(object):
         self.wizard_task = None
         self.measure = {"state": "idle"}
         self.measure_task = None
+        # The frontend says when Frame Suite's panel opens and closes: MAKO pauses its frame generation
+        # while the Quick Access menu is open, so Measure only counts time with the menu closed.
+        self.menu_open = False
+        self.menu_closed_at = 0.0
         self.update_cache = {"time": 0, "result": None}
         self.updating_until = 0.0
         self.sync_task = None
@@ -1583,6 +1587,18 @@ class Suite(object):
         self.measure_task = asyncio.ensure_future(self._measure(python, appid, seconds))
         return {"ok": True}
 
+    MENU_SETTLE_S = 1.5        # after the menu closes, MAKO and the game take a moment to recover
+    MEASURE_WAIT_S = 300.0     # how long a measurement waits for the menu to close
+
+    def set_menu(self, open_):
+        open_ = bool(open_)
+        if self.menu_open and not open_:
+            self.menu_closed_at = time.time()
+        self.menu_open = open_
+
+    def _menu_in_the_way(self):
+        return self.menu_open or time.time() - self.menu_closed_at < self.MENU_SETTLE_S
+
     async def _measure(self, python, appid, seconds):
         m = self.measure
         env = dict(os.environ)
@@ -1599,8 +1615,9 @@ class Suite(object):
         try:
             proc = await asyncio.create_subprocess_exec(
                 python, probe, str(int(appid)), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
-            end = time.time() + seconds
-            while time.time() < end:
+            deadline = time.time() + seconds + self.MEASURE_WAIT_S
+            m["counted"] = 0.0
+            while m["counted"] < seconds and time.time() < deadline:
                 try:
                     line = await asyncio.wait_for(proc.stdout.readline(), timeout=2.0)
                 except asyncio.TimeoutError:
@@ -1612,15 +1629,25 @@ class Suite(object):
                     m["note"] = text[1:].strip()
                     continue
                 parts = text.split()
+                m["waiting"] = self._menu_in_the_way()
+                if m["waiting"]:
+                    continue                     # the menu is open: these frames don't count
                 if len(parts) >= 2 and parts[0] != "-":
                     try:
-                        windows.append((float(parts[0]), int(parts[1]),
-                                        float(parts[2]) if len(parts) > 2 and parts[2] != "-" else None))
+                        w = (float(parts[0]), int(parts[1]),
+                             float(parts[2]) if len(parts) > 2 and parts[2] != "-" else None)
+                        windows.append(w)
+                        if w[0] > 0:
+                            m["counted"] += w[1] / w[0]
                     except ValueError:
                         pass
+                elif parts and parts[0] == "-":
+                    m["counted"] += 0.5          # a half second without frames still counts
             result = summarize(windows)
             if not result:
-                m.update(state="failed", error=m.get("note") or "No frames were reported for this game.")
+                m.update(state="failed", error=(
+                    "The menu stayed open: press Measure, then close the menu." if m.get("waiting")
+                    else m.get("note") or "No frames were reported for this game."))
                 return
             result.update(label=m["label"], time=_now(), seconds=seconds)
             runs = self.store.data.setdefault("measure", {}).setdefault(appid, [])
@@ -1642,7 +1669,7 @@ class Suite(object):
     def measure_status(self):
         m = dict(self.measure)
         if m.get("state") == "running":
-            m["progress"] = min(1.0, (time.time() - m["started"]) / max(1, m["seconds"]))
+            m["progress"] = min(1.0, (m.get("counted") or 0.0) / max(1, m["seconds"]))
         return m
 
     def measure_clear(self, appid):
