@@ -6,6 +6,8 @@ The toolbox (a separate Decky plugin, running as root) writes
     {"version": 1, "updated": 1767000000,
      "games": {"1687950": {"standby": true, "multiplier": 2}}}
 
+boost       (with "name") the game is set to Smoothest on the toolbox's Game tab: Frame Suite
+            turns its Boost on, through the frontend, which handles the launch options.
 standby     give the game an lsfg-vk profile at 1x (off). lsfg-vk only picks a
             game up when it starts, so this prepares the next start.
 multiplier  switch frame generation to this while the game runs (2-4), or
@@ -32,33 +34,57 @@ def path(home):
     return os.path.join(home, REL)
 
 
-def read(home, now):
-    """{appid: {"standby": bool, "multiplier": int or None}}; {} when there is
-    no (valid) file. Multipliers in a stale file count as null."""
+def _load(home):
+    """The request file's content when it is valid, else None."""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = os.open(path(home), flags)
     except OSError:
-        return {}
+        return None
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_BYTES:
-            return {}
+            return None
         with os.fdopen(os.dup(fd), "r", encoding="utf-8") as f:
             data = json.loads(f.read(MAX_BYTES + 1))
     except (OSError, ValueError, RecursionError):
-        return {}
+        return None
     finally:
         os.close(fd)
     if not isinstance(data, dict) or data.get("version") != VERSION or not isinstance(data.get("games"), dict):
+        return None
+    return data
+
+
+def _games(data):
+    for key, v in list(data["games"].items())[:200]:
+        if isinstance(key, str) and key.isdigit() and len(key) <= 10 and int(key) < 0x80000000 \
+                and isinstance(v, dict):
+            yield key, v
+
+
+def read_boosts(home):
+    """Games the toolbox's Game tab set to Smoothest: {appid: name}. Frame Suite turns their
+    Boost on (and off again when the request goes). Not time-limited: it is a choice, not a
+    live request."""
+    data = _load(home)
+    if data is None:
+        return {}
+    return {key: (v.get("name") if isinstance(v.get("name"), str) else "")[:120]
+            for key, v in _games(data) if v.get("boost") is True}
+
+
+def read(home, now):
+    """{appid: {"standby": bool, "multiplier": int or None}}; {} when there is
+    no (valid) file. Multipliers in a stale file count as null."""
+    data = _load(home)
+    if data is None:
         return {}
     updated = data.get("updated")
     fresh = isinstance(updated, (int, float)) and not isinstance(updated, bool) and now - updated <= FRESH_S
     out = {}
-    for key, v in list(data["games"].items())[:200]:
-        if not (isinstance(key, str) and key.isdigit() and len(key) <= 10 and int(key) < 0x80000000):
-            continue
-        if not isinstance(v, dict) or v.get("standby") is not True:
+    for key, v in _games(data):
+        if v.get("standby") is not True:
             continue
         m = v.get("multiplier")
         ok = isinstance(m, int) and not isinstance(m, bool) and 2 <= m <= 4

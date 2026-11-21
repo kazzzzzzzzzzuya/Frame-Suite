@@ -13,6 +13,7 @@ import { Guide } from "./pages/Guide";
 import { Home } from "./pages/Home";
 import { Setup } from "./pages/Setup";
 import { Versions } from "./pages/Versions";
+import { watchToolboxBoosts } from "./toolboxBoost";
 import { DOT } from "./dot";
 import { InfoHint, infoVisibility, Note, RED, STYLES, useInfoHidden } from "./ui";
 import { makoLaunchFix, makoLaunchMark, makoLaunchPlan } from "./backend";
@@ -209,6 +210,7 @@ export default definePlugin(() => {
     }
   }
   const stopWatching = watchMakoLaunchOptions();
+  const stopBoosts = watchToolboxBoosts();
   // The first time Frame Suite opens it starts with Getting started.
   if (!guideSeen.get()) nav.go("guide");
   return {
@@ -218,6 +220,7 @@ export default definePlugin(() => {
     icon: <FaLayerGroup />,
     onDismount() {
       stopWatching();
+      stopBoosts();
       for (const up of Object.values(upstream)) {
         try {
           up.onDismount?.();

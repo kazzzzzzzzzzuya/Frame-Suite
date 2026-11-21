@@ -194,6 +194,16 @@ Each upstream's own test suite runs as part of the build too.
 
 ## The look
 
+**First page, in order of importance:** the game, one **Frame generation** switch (Boost) with what
+it does in big numbers, a line when the Legion Go Toolbox asked for it, **Quality** and **Upscaler**
+as a few buttons, then closed sections: *Measure*, *Expert: the four plugins* (their tiles and every
+per-game setting) and *Help and clean up*.
+
+**With the Legion Go Toolbox:** choosing *Smoothest* for a game on the toolbox's Game tab turns that
+game's Boost on here by itself (within seconds; it starts with the game's next start), and choosing
+another mode turns it off again. Switch it off here by hand and it stays off until the mode changes.
+A game with anti-cheat is left for you to boost by hand.
+
 The **Dot theme**, shared with the Legion Go Toolbox: true black, white and grey with one red accent,
 titles and readings in dot-matrix type, the plugins and pages as round outlined tiles on the first page,
 notes in outlined cards. Steam's own controls (switches, sliders, buttons, lists) take the same look on the
