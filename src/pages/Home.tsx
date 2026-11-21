@@ -1,4 +1,4 @@
-import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ProgressBarWithInfo, ToggleField } from "@decky/ui";
+import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ProgressBarWithInfo } from "@decky/ui";
 import { useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -8,7 +8,7 @@ import {
 import { nav, usePanelShown } from "../nav";
 import { launchOptionsExclusive, readLaunchOptions, runningGame, writeLaunchOptions } from "../steam";
 import { FaClone, FaDna, FaExpandArrowsAlt, FaForward, FaMicrochip, FaTools } from "react-icons/fa";
-import { confirm, Fold, InfoBox, Pills, Readings, Tile, Tiles, toast, when } from "../ui";
+import { confirm, Fold, InfoBox, Pills, Readings, Tile, Tiles, toast, when, Toggle } from "../ui";
 
 const LAST_KEY = "frame-suite:last-game";
 const ROUTE_NAME: Record<string, string> = {
@@ -270,7 +270,7 @@ export function Home({ info }: { info: Info }) {
         {view && (
           <div className="fs-card">
             <PanelSectionRow>
-              <ToggleField
+              <Toggle
                 label="Frame generation"
                 description={`Chosen for this game: ${ROUTE_NAME[route ?? "lsfg"]}`}
                 checked={on}
@@ -530,7 +530,7 @@ export function Home({ info }: { info: Info }) {
                 </PanelSectionRow>
                 {view.options.mako_upscaler === "optiscaler" && (
                   <PanelSectionRow>
-                    <ToggleField
+                    <Toggle
                       label="Add HelixSR to OptiScaler"
                       description={
                         view.helix.built
@@ -592,7 +592,7 @@ export function Home({ info }: { info: Info }) {
                   />
                 </PanelSectionRow>
                 <PanelSectionRow>
-                  <ToggleField
+                  <Toggle
                     label="Add HelixSR"
                     description={
                       view.helix.built
@@ -605,7 +605,7 @@ export function Home({ info }: { info: Info }) {
                   />
                 </PanelSectionRow>
                 <PanelSectionRow>
-                  <ToggleField
+                  <Toggle
                     label="Frame generation is on in the game"
                     description="Tell the plugin when you switch on frame generation in the game's own settings: the Legion Go Toolbox reads this to aim at the doubled frame rate."
                     checked={view.options.fg_in_game}

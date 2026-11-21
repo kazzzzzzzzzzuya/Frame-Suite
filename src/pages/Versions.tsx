@@ -1,7 +1,7 @@
-import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ToggleField } from "@decky/ui";
+import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { getUpdates, Info, prepareUpdate, Release, setProfile, setToolboxFg, Updates } from "../backend";
-import { confirm, GREEN, Header, Note, RED, toast } from "../ui";
+import { confirm, GREEN, Header, Note, RED, toast, Toggle } from "../ui";
 
 const PLUGIN_NAME = "Frame Suite"; // must equal plugin.json "name": Decky finds the installed plugin by it
 const UPDATE = 2;
@@ -123,7 +123,7 @@ export function Versions({ info, onInfo }: { info: Info; onInfo: (i: Info) => vo
         <Header>For other plugins</Header>
         <Note>What Boost set up per game is written to{`\n${info.bridge}\n`}for tools like the Legion Go Toolbox to read.</Note>
         <PanelSectionRow>
-          <ToggleField
+          <Toggle
             label="Let the Legion Go Toolbox use lsfg-vk"
             description="For its battery goals: lsfg-vk is prepared for those games (off until needed, ready from their next start) and switched on while the battery needs it, so the game makes half the frames and the screen still shows the same. Off takes back everything it changed."
             checked={info.toolbox_fg}

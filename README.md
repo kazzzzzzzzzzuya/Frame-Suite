@@ -159,6 +159,10 @@ mode and Auto TDP (2.8.0 and newer) to read: the game's method, and whether fram
 (`upstreams.json`), tags and publishes a release. A build that fails publishes nothing and opens an
 issue; the last good release stays.
 
+**Version numbers** follow one rule: in *x.y.z*, *z* counts fixes up to 10; after
+*x.y.10* comes *x.(y+1).0*, with *y* up to 20; after *x.20.10* comes *(x+1).0.0*.
+*x* also goes up for a major change. The release job counts on by itself with `scripts/next-version.mjs`.
+
 What makes this safe to automate:
 
 - **No upstream source is edited.** Each frontend is built from its own lockfile; the only substitution
