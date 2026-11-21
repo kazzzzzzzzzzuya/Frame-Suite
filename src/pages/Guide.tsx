@@ -42,32 +42,33 @@ export function Guide() {
       <PanelSection>
         <Header>2 · Boost a game</Header>
         <InfoBox tone="info">
-          Pick the game on the first page (a running game is picked for you) and switch Boost on. Frame Suite says what
-          it chose and why:{"\n"}
-          • MAKO (most games): start the game first, switch Boost on, then restart the game once.{"\n"}
+          Pick the game on the first page (a running game is picked for you) and switch Frame generation on (Frame
+          Suite calls it Boost). It says what it chose and why:{"\n"}
+          • MAKO (most games): start the game first, switch it on, then restart the game once.{"\n"}
           • FSR 4 (games with DLSS, FSR or XeSS): close the game first, its files are changed. Then choose DLSS in the
           game's graphics settings.{"\n"}
-          If something is still missing, a yellow note under Boost says what to do.
+          If something is still missing, a note under the switch says what to do.
         </InfoBox>
       </PanelSection>
 
       <PanelSection>
         <Header>3 · Adjust, or not</Header>
         <InfoBox tone="info">
-          The defaults fit your chip. With MAKO, change "Frame rate on screen" (72 is even on the Legion Go's 144 Hz
-          screen) and "Most generated frames" on the first page while MAKO is on. Launch options are written
-          and removed for you. Boost off puts the game back as it was.
+          The defaults fit your chip. Quality and Upscaler are right under the switch; everything else ("Frame rate on
+          screen": 72 is even on the Legion Go's 144 Hz screen, "Most generated frames") is under Expert on the first
+          page. Launch options are written and removed for you. Switching it off puts the game back as it was.
         </InfoBox>
         <InfoBox tone="info">
-          With LeGo Decky Toolbox installed there is nothing to link: its Smooth mode, Auto TDP and Battery playtime
-          follow what Frame Suite does in each game.
+          With LeGo Decky Toolbox installed there is nothing to link: choosing Smoothest for a game on its Game tab
+          switches frame generation on here by itself, and its power and frame-rate settings follow what Frame Suite
+          does in each game.
         </InfoBox>
       </PanelSection>
 
       <PanelSection>
         <Header>Good to know</Header>
         <InfoBox tone="info">
-          R1 hides the explanations on Frame Suite's pages. B goes back to the first page. New versions are
+          R1 shows and hides the explanations on Frame Suite's pages (hidden at first). B goes back to the first page. New versions are
           offered on Chip &amp; versions, where an older one can also be put back.
         </InfoBox>
         <PanelSectionRow>
