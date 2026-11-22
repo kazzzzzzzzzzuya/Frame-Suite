@@ -2,6 +2,12 @@
 
 Four Decky plugins in one, plus a per-game switch that sets them up for your device's chip.
 
+It works best together with **[LeGo Decky Toolbox](https://github.com/kazzzzzzzzzzuya/LeGo-decky-toolbox)**.
+The toolbox runs the hardware side (power, fan, battery, controllers), and choosing *Smoothest* for a
+game there turns frame generation on here by itself.
+
+<img src="docs/images/first-page.png" width="270" alt="Frame Suite's first page: frame generation switch, readings, quality and upscaler"> <img src="docs/images/toolbox-game.png" width="270" alt="LeGo Decky Toolbox's Game tab with the three modes">
+
 | Inside | What it does |
 |---|---|
 | [MAKO](https://github.com/eugeniosegala/MAKO) | Adaptive frame generation for any game with its own model (no Lossless Scaling needed), scaling, shaders, HDR |
@@ -13,8 +19,8 @@ The four plugins run **unmodified**: their full panels are one button away (the 
 page), and every stable release of any of them produces a new Frame Suite build automatically. This is an independent repackaging, not
 affiliated with or supported by their authors. Please report problems here, not to them.
 
-Not yet verified on a device by the author of this repository's code; everything that can be tested
-without one is (see [Tests](#tests)).
+Used on a Legion Go (Ryzen Z1 Extreme) with SteamOS. Everything that can be tested without a device is
+tested in CI (see [Tests](#tests)).
 
 ## Install
 
@@ -53,7 +59,7 @@ MAKO** offers the same choices as the separate plugins:
 
 | Choice | What goes into the game | In the game, choose |
 |---|---|---|
-| Off | nothing: MAKO alone | – |
+| Off | nothing: MAKO alone | nothing |
 | FSR 4 (OptiScaler, Framegen) | OptiScaler with FSR 4, as Decky-Framegen does it; HelixSR in its menu if built and "Add HelixSR to OptiScaler" is on | DLSS (or FSR / XeSS) |
 | HelixSR Scaler | HelixSR's own OptiScaler with HLX DLSS, as HelixSR Manager does it (needs a HelixSR 3.x release built in Setup) | DLSS |
 | HelixSR in place of the game's FSR | HLX FSR 4 replaces the game's FSR 3.1 file, as HelixSR Manager does it | FSR |
@@ -198,7 +204,7 @@ Each upstream's own test suite runs as part of the build too.
 
 ## The look
 
-**First page, in order of importance:** the game, one **Frame generation** switch (Boost) with what
+The first page puts things in order of importance: the game, one **Frame generation** switch (Boost) with what
 it does in big numbers, a line when the Legion Go Toolbox asked for it, **Quality** and **Upscaler**
 as a few buttons, then closed sections: *Measure*, *Expert: the four plugins* (their tiles and every
 per-game setting) and *Help and clean up*.
@@ -207,7 +213,7 @@ per-game setting) and *Help and clean up*.
 Quick Access menu is open: press it, close the menu (B), stand still in a demanding scene; 20 seconds of
 play later the result is on the first page.
 
-**With the Legion Go Toolbox:** choosing *Smoothest* for a game on the toolbox's Game tab turns that
+With the Legion Go Toolbox installed, choosing *Smoothest* for a game on the toolbox's Game tab turns that
 game's Boost on here by itself (within seconds; it starts with the game's next start), and choosing
 another mode turns it off again. Switch it off here by hand and it stays off until the mode changes.
 A game with anti-cheat is left for you to boost by hand.
